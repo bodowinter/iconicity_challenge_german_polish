@@ -1,0 +1,237 @@
+---
+title: "German & Polish analysis"
+author: "Bodo Winter"
+date: "9/3/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Preprocessing
+
+Load libraries:
+
+```{r libs, message = FALSE}
+library(tidyverse)
+library(stringr)
+```
+
+Let's load in the data files:
+
+```{r load_files, message = FALSE}
+pol <- read_delim('../data/2018-08-21-polish.txt', delim = '\t')
+ger <- read_delim('../data/2018-08-21-german.txt', delim = '\t')
+
+# Check:
+
+ger %>% print(width = Inf, n = 2)
+```
+
+Selected only those columns needed (for now):
+
+```{r rid_cols}
+ger <- select(ger,
+              sessionid,
+              inputvalue, options,
+              repetitions)
+pol <- select(pol,
+              sessionid,
+              inputvalue, options,
+              repetitions)
+```
+
+(We are going to ignore "foreignlanguages" for now.)
+
+So, Ola/Suse: I presume sessionid can be used to identify participants? In that case, let's rename this to subject:
+
+```{r renaming}
+ger <- rename(ger,
+              sub = sessionid,
+              input = inputvalue)
+pol <- rename(pol,
+              sub = sessionid,
+              input = inputvalue)
+```
+
+Get rid of those that didn't complete the full experiment:
+
+```{r incompletes}
+# Table with how many data points there are per subject:
+
+ger_subs <- table(ger$sub)
+pol_subs <- table(pol$sub)
+
+# Get those that do not have 104 data points:
+
+bad_germans <- names(ger_subs)[which(ger_subs != 104)]
+bad_poles <- names(pol_subs)[which(pol_subs != 104)]
+
+## How many are there that need to be excluded?
+
+length(bad_germans)
+length(bad_poles)
+
+## Out of how many in total?
+
+length(ger_subs)
+length(pol_subs)
+
+## So that's how much exclusion?
+
+round(length(bad_germans) / length(ger_subs), 2)
+round(length(bad_poles) / length(pol_subs), 2)
+
+# Extract them:
+
+ger <- filter(ger, !(sub %in% bad_germans))
+pol <- filter(pol, !(sub %in% bad_poles))
+```
+
+Is this right that 41% of all Polish participants didn't complete the experiment? For Germans it's 27%.
+
+Next, I want to extract the relevant options bit. This is really ugly for now (will think of a more elegant regex one-liner soon):
+
+```{r extract_options}
+# Extract response string by splitting at the bracket:
+
+ger_resp <- str_split(ger$options, '\\[', simplify = TRUE)[, 2]
+pol_resp <- str_split(pol$options, '\\[', simplify = TRUE)[, 2]
+
+# Get rid of first two special characters:
+
+ger_resp <- str_sub(ger_resp, 2, str_length(ger_resp))
+pol_resp <- str_sub(pol_resp, 2, str_length(pol_resp))
+
+# Take the word out:
+
+suppressWarnings(ger$choice <- separate(tibble(ger_resp),
+                                        ger_resp, into = LETTERS)[, 1]$A)
+suppressWarnings(pol$choice <- separate(tibble(pol_resp),
+                                        pol_resp, into = LETTERS)[, 1]$A)
+
+## Let's get rid of the options column:
+
+ger <- select(ger, -options)
+pol <- select(pol, -options)
+
+# Sanity-check: How does inputvalue versus choice look like?
+
+select(ger, input, choice)
+select(pol, input, choice)
+```
+
+Let's get rid of any subject that has gotten the clapping wrong at least once:
+
+```{r clap_exclude}
+# Subset of clapping items:
+
+ger_claps <- filter(ger, input == 'Klatschen')
+pol_claps <- filter(pol, input == 'klaskanie')
+
+# Get all the wrong claps:
+
+bad_germans <- ger_claps$input != ger_claps$choice
+bad_poles <- pol_claps$input != pol_claps$choice
+
+# Get the subjects for which the claps were wrong:
+
+bad_germans <- unique(ger_claps$sub[bad_germans])
+bad_poles <- unique(pol_claps$sub[bad_poles])
+
+# How many subjects do we have right now?
+
+length(unique(ger$sub))
+length(unique(pol$sub))
+
+# Extract the wrong-clappers:
+
+ger <- filter(ger,
+              !(sub %in% bad_germans))
+pol <- filter(pol,
+              !(sub %in% bad_poles))
+```
+
+Let's get rid of the kiki and bouba and r/l stims, as well as the clapping items:
+
+```{r kiki_r_l_extract}
+# Define vector of trials to extract:
+
+bad_trials <- c('r', 'l', 'kiki', 'bouba', 'klaskanie', 'Klatschen')
+
+# Get rid of those trials:
+
+ger <- filter(ger,
+              !(input %in% bad_trials))
+pol <- filter(pol,
+              !(input %in% bad_trials))
+```
+
+Let's check whether this work. Everybody should have 90 data points now (3 * 30).
+
+```{r check}
+table(ger$sub)
+table(pol$sub)
+```
+
+Why are there still people with more than 90 data points?
+
+Each item should occur in equal proportions:
+
+```{r input_check}
+table(ger$input)
+table(pol$input)
+```
+
+This does not seem to be right: How come we have only two "zbierać", and shouldn't all be in equal proportions anyway?
+
+## Check accuracy:
+
+Let's create an accuracy measure, numerical with 0 = inaccurate and 1 = accurate.
+
+```{r acc_create}
+ger <- mutate(ger,
+              ACC = ifelse(input == choice, 1, 0))
+pol <- mutate(pol,
+              ACC = ifelse(input == choice, 1, 0))
+```
+
+Let's check the average accuracy:
+
+```{r avg_acc}
+round(mean(ger$ACC), 2)
+round(mean(pol$ACC), 2)
+```
+
+69% for the Germans and 60% for the Poles? That seems a bit high?
+
+Let's check accuracy per concept:
+
+```{r acc_per_concept}
+ger %>% group_by(input) %>%
+  summarize(ACC = mean(ACC)) %>%
+  mutate(ACC = round(ACC, 2)) %>% 
+  arrange(desc(ACC)) %>% 
+  print(n = Inf)
+pol %>% group_by(input) %>%
+  summarize(ACC = mean(ACC)) %>%
+  mutate(ACC = round(ACC, 2)) %>% 
+  arrange(desc(ACC)) %>% 
+  print(n = Inf)
+```
+
+Check average per subject:
+
+```{r avg_per_sub}
+ger %>% group_by(sub) %>%
+  summarize(ACC = mean(ACC)) %>% 
+  mutate(ACC = round(ACC, 2)) %>% 
+  print(n = Inf)
+pol %>% group_by(sub) %>%
+  summarize(ACC = mean(ACC)) %>% 
+  mutate(ACC = round(ACC, 2)) %>% 
+  print(n = Inf)
+```
+
+
