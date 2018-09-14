@@ -128,8 +128,9 @@ $(document).ready(function () {
 <div id="preprocessing" class="section level2">
 <h2>Preprocessing</h2>
 <p>Load libraries:</p>
-<pre class="r"><code>library(tidyverse)
-library(stringr)</code></pre>
+<pre class="r"><code>library(tidyverse) # for data carpentry
+library(stringr) # for string processing
+library(brms) # for bayesian models</code></pre>
 <p>Let’s load in the data files:</p>
 <pre class="r"><code>pol &lt;- read_delim('../data/2018-08-21-polish.txt', delim = '\t')
 ger &lt;- read_delim('../data/2018-08-21-german.txt', delim = '\t')
@@ -209,56 +210,33 @@ ger %&gt;% print(width = Inf, n = 2)</code></pre>
 ## # ... with 7,112 more rows</code></pre>
 <p>Selected only those columns needed (for now):</p>
 <pre class="r"><code>ger &lt;- select(ger,
-              sessionid,
-              inputvalue, options,
+              userid, itemid,
+              firstlanguage, participantage, sex,
+              position,
+              expected, inputvalue,
+              options,
               repetitions)
 pol &lt;- select(pol,
-              sessionid,
-              inputvalue, options,
+              userid, itemid,
+              firstlanguage, participantage, sex,
+              position,
+              expected, inputvalue,
+              options,
               repetitions)</code></pre>
-<p>(We are going to ignore “foreignlanguages” for now.)</p>
-<p>So, Ola/Suse: I presume sessionid can be used to identify participants? In that case, let’s rename this to subject:</p>
+<p>Rename relevant columns for easier typing.</p>
 <pre class="r"><code>ger &lt;- rename(ger,
-              sub = sessionid,
+              sub = userid,
+              item = itemid,
+              language = firstlanguage,
+              age = participantage,
               input = inputvalue)
 pol &lt;- rename(pol,
-              sub = sessionid,
+              sub = userid,
+              item = itemid,
+              language = firstlanguage,
+              age = participantage,
               input = inputvalue)</code></pre>
-<p>Get rid of those that didn’t complete the full experiment:</p>
-<pre class="r"><code># Table with how many data points there are per subject:
-
-ger_subs &lt;- table(ger$sub)
-pol_subs &lt;- table(pol$sub)
-
-# Get those that do not have 104 data points:
-
-bad_germans &lt;- names(ger_subs)[which(ger_subs != 104)]
-bad_poles &lt;- names(pol_subs)[which(pol_subs != 104)]
-
-## How many are there that need to be excluded?
-
-length(bad_germans)</code></pre>
-<pre><code>## [1] 23</code></pre>
-<pre class="r"><code>length(bad_poles)</code></pre>
-<pre><code>## [1] 26</code></pre>
-<pre class="r"><code>## Out of how many in total?
-
-length(ger_subs)</code></pre>
-<pre><code>## [1] 86</code></pre>
-<pre class="r"><code>length(pol_subs)</code></pre>
-<pre><code>## [1] 63</code></pre>
-<pre class="r"><code>## So that's how much exclusion?
-
-round(length(bad_germans) / length(ger_subs), 2)</code></pre>
-<pre><code>## [1] 0.27</code></pre>
-<pre class="r"><code>round(length(bad_poles) / length(pol_subs), 2)</code></pre>
-<pre><code>## [1] 0.41</code></pre>
-<pre class="r"><code># Extract them:
-
-ger &lt;- filter(ger, !(sub %in% bad_germans))
-pol &lt;- filter(pol, !(sub %in% bad_poles))</code></pre>
-<p>Is this right that 41% of all Polish participants didn’t complete the experiment? For Germans it’s 27%.</p>
-<p>Next, I want to extract the relevant options bit. This is really ugly for now (will think of a more elegant regex one-liner soon):</p>
+<p>Next, I want to extract the relevant options bit. This is really ugly for now (will think of a more elegant regex one-liner soon). This is based on the assumption that the first item is the expected stimulus.</p>
 <pre class="r"><code># Extract response string by splitting at the bracket:
 
 ger_resp &lt;- str_split(ger$options, '\\[', simplify = TRUE)[, 2]
@@ -284,22 +262,22 @@ pol &lt;- select(pol, -options)
 # Sanity-check: How does inputvalue versus choice look like?
 
 select(ger, input, choice)</code></pre>
-<pre><code>## # A tibble: 6,552 x 2
+<pre><code>## # A tibble: 7,114 x 2
 ##    input     choice   
 ##    &lt;chr&gt;     &lt;chr&gt;    
-##  1 viele     klein    
-##  2 Schlange  Schlange 
-##  3 groß      groß     
-##  4 Hirsch    Hirsch   
-##  5 essen     Messer   
-##  6 Fleisch   Fleisch  
-##  7 das       Messer   
-##  8 Fleisch   Fleisch  
-##  9 schneiden schneiden
-## 10 Frucht    Frucht   
-## # ... with 6,542 more rows</code></pre>
+##  1 kochen    Frucht   
+##  2 Kind      Kind     
+##  3 Wasser    Feuer    
+##  4 klein     klein    
+##  5 Kind      Kind     
+##  6 kochen    Frucht   
+##  7 Hirsch    Hirsch   
+##  8 Schlange  Schlange 
+##  9 Klatschen Klatschen
+## 10 Stein     viele    
+## # ... with 7,104 more rows</code></pre>
 <pre class="r"><code>select(pol, input, choice)</code></pre>
-<pre><code>## # A tibble: 3,848 x 2
+<pre><code>## # A tibble: 4,452 x 2
 ##    input     choice   
 ##    &lt;chr&gt;     &lt;chr&gt;    
 ##  1 nóż       nóż      
@@ -312,36 +290,118 @@ select(ger, input, choice)</code></pre>
 ##  8 klaskanie klaskanie
 ##  9 jeść      jeść     
 ## 10 ciąć      ciąć     
-## # ... with 3,838 more rows</code></pre>
+## # ... with 4,442 more rows</code></pre>
+<p>Take only the native speakers of each language:</p>
+<pre class="r"><code># Check responses:
+
+ger_all_langs &lt;- unique(ger$language)
+pol_all_langs &lt;- unique(pol$language)
+ger_all_langs</code></pre>
+<pre><code>##  [1] &quot;Russisch&quot;                 &quot;Deutsch&quot;                 
+##  [3] &quot;x&quot;                        &quot;Englisch&quot;                
+##  [5] &quot;q&quot;                        &quot;deutsch&quot;                 
+##  [7] &quot;Tschechisch&quot;              &quot;Niederlaendisch&quot;         
+##  [9] &quot;Schweizerdeutsch&quot;         &quot;Deutsch &quot;                
+## [11] &quot;Chinesisch&quot;               &quot;Österreichisches Deutsch&quot;</code></pre>
+<pre class="r"><code>pol_all_langs</code></pre>
+<pre><code>## [1] &quot;polski&quot;         &quot;n&quot;              &quot;w&quot;              &quot;q&quot;             
+## [5] &quot;Polski&quot;         &quot;polski, śląski&quot;</code></pre>
+<pre class="r"><code># Valid:
+
+ger_speakers &lt;- ger_all_langs[str_detect(ger_all_langs, '(d|D)eutsch')]
+pol_speakers &lt;- pol_all_langs[str_detect(pol_all_langs, '(p|P)olski')]
+
+# Take only those:
+
+ger &lt;- filter(ger, language %in% ger_speakers)
+pol &lt;- filter(pol, language %in% pol_speakers)</code></pre>
+<p>Get rid of those that didn’t complete the full experiment:</p>
+<pre class="r"><code># Table with how many data points there are per subject:
+
+ger_subs &lt;- table(ger$sub)
+pol_subs &lt;- table(pol$sub)
+
+# Get those that do not have 104 data points:
+
+bad_germans &lt;- names(ger_subs)[which(ger_subs != 104)]
+bad_poles &lt;- names(pol_subs)[which(pol_subs != 104)]
+
+## How many are there that need to be excluded?
+
+length(bad_germans)</code></pre>
+<pre><code>## [1] 17</code></pre>
+<pre class="r"><code>length(bad_poles)</code></pre>
+<pre><code>## [1] 23</code></pre>
+<pre class="r"><code>## Out of how many in total?
+
+length(ger_subs)</code></pre>
+<pre><code>## [1] 76</code></pre>
+<pre class="r"><code>length(pol_subs)</code></pre>
+<pre><code>## [1] 60</code></pre>
+<pre class="r"><code>## So that's how much exclusion?
+
+round(length(bad_germans) / length(ger_subs), 2)</code></pre>
+<pre><code>## [1] 0.22</code></pre>
+<pre class="r"><code>round(length(bad_poles) / length(pol_subs), 2)</code></pre>
+<pre><code>## [1] 0.38</code></pre>
+<pre class="r"><code># Extract them:
+
+ger &lt;- filter(ger, !(sub %in% bad_germans))
+pol &lt;- filter(pol, !(sub %in% bad_poles))</code></pre>
+<p>So, 38% of all Polish participants didn’t complete the experiment, and 22% of all Germans.</p>
 <p>Let’s get rid of any subject that has gotten the clapping wrong at least once:</p>
 <pre class="r"><code># Subset of clapping items:
 
-ger_claps &lt;- filter(ger, input == 'Klatschen')
-pol_claps &lt;- filter(pol, input == 'klaskanie')
+ger_claps &lt;- filter(ger, choice == 'Klatschen')
+pol_claps &lt;- filter(pol, choice == 'klaskanie')
 
-# Get all the wrong claps:
+# Identifier for whether clap was identified correctly:
 
-bad_germans &lt;- ger_claps$input != ger_claps$choice
-bad_poles &lt;- pol_claps$input != pol_claps$choice
+ger_claps &lt;- mutate(ger_claps,
+                    clapACC = ifelse(input == 'Klatschen', 1, 0))
+pol_claps &lt;- mutate(pol_claps,
+                    clapACC = ifelse(input == 'klaskanie', 1, 0))
 
-# Get the subjects for which the claps were wrong:
+# Tabulate accuracy by subject:
 
-bad_germans &lt;- unique(ger_claps$sub[bad_germans])
-bad_poles &lt;- unique(pol_claps$sub[bad_poles])
+ger_clap_subs &lt;- ger_claps %&gt;%
+  group_by(sub) %&gt;% 
+  summarize(ACC = sum(clapACC))
+pol_clap_subs &lt;- pol_claps %&gt;%
+  group_by(sub) %&gt;% 
+  summarize(ACC = sum(clapACC))
 
-# How many subjects do we have right now?
+# How many incorrect?
 
-length(unique(ger$sub))</code></pre>
-<pre><code>## [1] 63</code></pre>
-<pre class="r"><code>length(unique(pol$sub))</code></pre>
+nrow(filter(ger_clap_subs, ACC != 10))</code></pre>
+<pre><code>## [1] 6</code></pre>
+<pre class="r"><code>nrow(filter(pol_clap_subs, ACC != 10))</code></pre>
+<pre><code>## [1] 4</code></pre>
+<pre class="r"><code># Out of how many?
+
+nrow(ger_clap_subs)</code></pre>
+<pre><code>## [1] 59</code></pre>
+<pre class="r"><code>nrow(pol_clap_subs)</code></pre>
 <pre><code>## [1] 37</code></pre>
-<pre class="r"><code># Extract the wrong-clappers:
+<pre class="r"><code># Percentage:
+
+nrow(filter(ger_clap_subs, ACC != 10)) / nrow(ger_clap_subs)</code></pre>
+<pre><code>## [1] 0.1016949</code></pre>
+<pre class="r"><code>nrow(filter(pol_clap_subs, ACC != 10)) / nrow(pol_clap_subs)</code></pre>
+<pre><code>## [1] 0.1081081</code></pre>
+<pre class="r"><code># Get the subjects for which the claps were wrong:
+
+bad_germans &lt;- filter(ger_clap_subs, ACC != 10) %&gt;% pull(sub)
+bad_poles &lt;- filter(pol_clap_subs, ACC != 10) %&gt;% pull(sub)
+
+# Extract the wrong-clappers:
 
 ger &lt;- filter(ger,
               !(sub %in% bad_germans))
 pol &lt;- filter(pol,
               !(sub %in% bad_poles))</code></pre>
-<p>Let’s get rid of the kiki and bouba and r/l stims, as well as the clapping items:</p>
+<p>So about 10% of the remaining people had to be excluded because they got the claps wrong.</p>
+<p>Let’s get rid of the kiki and bouba and r/l stims, as well as the clapping trials:</p>
 <pre class="r"><code># Define vector of trials to extract:
 
 bad_trials &lt;- c('r', 'l', 'kiki', 'bouba', 'klaskanie', 'Klatschen')
@@ -349,69 +409,87 @@ bad_trials &lt;- c('r', 'l', 'kiki', 'bouba', 'klaskanie', 'Klatschen')
 # Get rid of those trials:
 
 ger &lt;- filter(ger,
-              !(input %in% bad_trials))
+              !(choice %in% bad_trials))
 pol &lt;- filter(pol,
-              !(input %in% bad_trials))</code></pre>
+              !(choice %in% bad_trials))</code></pre>
 <p>Let’s check whether this work. Everybody should have 90 data points now (3 * 30).</p>
 <pre class="r"><code>table(ger$sub)</code></pre>
 <pre><code>## 
-## 2001960 2002066 2002181 2003687 2006973 2007185 2007197 2007257 2007505 
-##      95      90      93      90      90      90      91      90      91 
-## 2007575 2007595 2008182 2008469 2009354 2009820 2009857 2009902 2010153 
+## 2002065 2003686 2006972 2006991 2007184 2007256 2007574 2007594 2007941 
 ##      90      90      90      90      90      90      90      90      90 
-## 2010577 2011955 2013436 2015119 2015371 2016147 2016253 2016675 2017196 
+## 2008181 2008468 2009353 2009819 2009856 2009901 2010152 2011489 2011954 
 ##      90      90      90      90      90      90      90      90      90 
-## 2017558 2017828 2018342 2018651 2018699 2019007 2019115 2019961 2020666 
-##      90      90      90      90      99      91      90      91      90 
-## 2020772 2020887 2021088 2021203 2021892 2021951 2022372 2024982 2025088 
+## 2013435 2015118 2015370 2016146 2016252 2016674 2017195 2017540 2017557 
 ##      90      90      90      90      90      90      90      90      90 
-## 2025321 2026290 2026502 2026608 2028933 2032454 2035082 2035188 2035314 
+## 2017827 2018341 2018650 2019114 2020665 2020771 2020886 2021087 2021202 
 ##      90      90      90      90      90      90      90      90      90 
-## 2036644 2036752 2037056 
-##      90      90      90</code></pre>
+## 2021891 2022037 2022371 2024981 2025087 2025320 2026289 2026501 2026607 
+##      90      90      90      90      90      90      90      90      90 
+## 2028932 2032453 2035081 2035187 2035313 2036643 2036751 2037055 
+##      90      90      90      90      90      90      90      90</code></pre>
 <pre class="r"><code>table(pol$sub)</code></pre>
 <pre><code>## 
-## 1997874 2009277 2011225 2011259 2011661 2013051 2013478 2014004 2014368 
-##      90      90      90      90      90      91      91      90      90 
-## 2014900 2014968 2015927 2016033 2017093 2017373 2018013 2018041 2018230 
-##      90      93      90      90      91      90      90      90      90 
-## 2018421 2018879 2019534 2020484 2021622 2021728 2022234 2022849 2023368 
+## 1997873 2008029 2009276 2011224 2011258 2011660 2014003 2014367 2014762 
 ##      90      90      90      90      90      90      90      90      90 
-## 2023456 2023711 2024564 2028145 2034654 
-##      90      90      90      90      90</code></pre>
-<p>Why are there still people with more than 90 data points?</p>
+## 2014899 2015078 2015926 2016032 2017372 2018012 2018040 2018229 2018420 
+##      90      90      90      90      90      90      90      90      90 
+## 2018878 2019533 2020483 2021621 2021727 2022233 2022848 2023367 2023455 
+##      90      90      90      90      90      90      90      90      90 
+## 2023604 2023710 2023816 2024563 2028144 2034653 
+##      90      90      90      90      90      90</code></pre>
+<p>We now only have people with = 90 items.</p>
 <p>Each item should occur in equal proportions:</p>
-<pre class="r"><code>table(ger$input)</code></pre>
+<pre class="r"><code>table(ger$item)</code></pre>
 <pre><code>## 
-## (ver)sammeln          das         dies         eins        essen 
-##          112           86          130          160          238 
-##        Feuer      Fleisch         Frau       Frucht         groß 
-##          182          137          155          129          221 
-##          gut      hämmern       Hirsch        jagen         Kind 
-##          195          182          171          202          219 
-##        klein       kochen         Mann       Messer       scharf 
-##          188          149          156          127          148 
-##     schlafen     Schlange     schlecht    schneiden        Stein 
-##          226          185          188          195          154 
-##       stumpf        Tiger   verstecken        viele       Wasser 
-##          145          213          163          170          225</code></pre>
-<pre class="r"><code>table(pol$input)</code></pre>
+## 2000887 2000888 2000889 2000890 2000891 2000892 2000893 2000894 2000895 
+##      53      53      53      53      53      53      53      53      53 
+## 2000896 2000897 2000898 2000899 2000902 2000903 2000904 2000905 2000906 
+##      53      53      53      53      53      53      53      53      53 
+## 2000907 2000908 2000909 2000910 2000911 2000912 2000913 2000914 2000915 
+##      53      53      53      53      53      53      53      53      53 
+## 2000916 2000917 2000918 2000919 2000920 2000921 2000922 2000923 2000924 
+##      53      53      53      53      53      53      53      53      53 
+## 2000925 2000926 2000927 2000928 2000929 2000930 2000931 2000932 2000933 
+##      53      53      53      53      53      53      53      53      53 
+## 2000934 2000935 2000936 2000937 2000938 2000939 2000940 2000941 2000942 
+##      53      53      53      53      53      53      53      53      53 
+## 2000943 2000944 2000945 2000946 2000947 2000948 2000949 2000950 2000951 
+##      53      53      53      53      53      53      53      53      53 
+## 2000952 2000953 2000954 2000955 2000956 2000957 2000958 2000959 2000960 
+##      53      53      53      53      53      53      53      53      53 
+## 2000961 2000962 2000963 2000964 2000965 2000966 2000967 2000968 2000969 
+##      53      53      53      53      53      53      53      53      53 
+## 2000970 2000971 2000972 2000973 2000974 2000975 2000976 2000977 2000978 
+##      53      53      53      53      53      53      53      53      53</code></pre>
+<pre class="r"><code>table(pol$item)</code></pre>
 <pre><code>## 
-##        chować  chować (się)          ciąć         dobry          duży 
-##             3            99           124            85            98 
-##       dziecko       gotować         jeden         jeleń          jeść 
-##           131            95            74           105           145 
-##        kamień       kobieta          mały     mężczyzna         mięso 
-##            74            83            93            99            72 
-##           nóż         ogień         ostry          owoc       polować 
-##            56           115            83            65           112 
-##          spać         tamto          tępy            to        tygrys 
-##           138            84            83           107           103 
-##         walić           wąż         wiele          woda       zbierać 
-##            98            92            97           107             2 
-## zbierać (się)           zły 
-##            74            90</code></pre>
-<p>This does not seem to be right: How come we have only two “zbierać”, and shouldn’t all be in equal proportions anyway?</p>
+## 1993449 1993450 1993451 1993452 1993453 1993454 1993455 1993456 1993457 
+##      33      33      33      33      33      33      33      33      33 
+## 1993458 1993459 1993460 1993461 1993462 1993463 1993464 1993465 1993466 
+##      33      33      33      33      33      33      33      33      33 
+## 1993467 1993468 1993469 1993470 1993471 1993472 1993473 1993474 1993475 
+##      33      33      33      33      33      33      33      33      33 
+## 1993476 1993477 1993478 1993479 1993480 1993481 1993482 1993483 1993484 
+##      33      33      33      33      33      33      33      33      33 
+## 1993485 1993486 1993487 1993488 1993489 1993490 1993491 1993492 1993493 
+##      33      33      33      33      33      33      33      33      33 
+## 1993494 1993495 1993496 1993497 1993498 1993499 1993500 1993501 1993502 
+##      33      33      33      33      33      33      33      33      33 
+## 1993503 1993504 1993505 1993506 1993507 1993508 1993509 1993510 1993511 
+##      33      33      33      33      33      33      33      33      33 
+## 1993512 1993513 1993514 1993515 1993516 1993517 1993518 1993519 1993520 
+##      33      33      33      33      33      33      33      33      33 
+## 1993521 1993522 1993523 1993524 1993525 1993526 1993527 1993528 1993529 
+##      33      33      33      33      33      33      33      33      33 
+## 1993530 1993531 1993532 1993533 1993534 1993535 1993536 1993537 1993538 
+##      33      33      33      33      33      33      33      33      33</code></pre>
+<pre class="r"><code># Check whether they are all the same to the number of subs:
+
+all(table(ger$item) == length(unique(ger$sub)))</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<pre class="r"><code>all(table(pol$item) == length(unique(pol$sub)))</code></pre>
+<pre><code>## [1] TRUE</code></pre>
+<p>That is the case. So it all looks good now.</p>
 </div>
 <div id="check-accuracy" class="section level2">
 <h2>Check accuracy:</h2>
@@ -422,193 +500,351 @@ pol &lt;- mutate(pol,
               ACC = ifelse(input == choice, 1, 0))</code></pre>
 <p>Let’s check the average accuracy:</p>
 <pre class="r"><code>round(mean(ger$ACC), 2)</code></pre>
-<pre><code>## [1] 0.69</code></pre>
+<pre><code>## [1] 0.71</code></pre>
 <pre class="r"><code>round(mean(pol$ACC), 2)</code></pre>
 <pre><code>## [1] 0.6</code></pre>
-<p>69% for the Germans and 60% for the Poles? That seems a bit high?</p>
+<p>71% for Germans, 60% for Poles. So the with 1 out 6 options, the Poles are performing exactly at chance.</p>
 <p>Let’s check accuracy per concept:</p>
-<pre class="r"><code>ger %&gt;% group_by(input) %&gt;%
+<pre class="r"><code>ger %&gt;% group_by(choice) %&gt;%
   summarize(ACC = mean(ACC)) %&gt;%
   mutate(ACC = round(ACC, 2)) %&gt;% 
   arrange(desc(ACC)) %&gt;% 
   print(n = Inf)</code></pre>
 <pre><code>## # A tibble: 30 x 2
-##    input          ACC
-##    &lt;chr&gt;        &lt;dbl&gt;
-##  1 Fleisch      0.85 
-##  2 Frucht       0.79 
-##  3 groß         0.79 
-##  4 Schlange     0.78 
-##  5 hämmern      0.77 
-##  6 Messer       0.76 
-##  7 schlafen     0.76 
-##  8 Feuer        0.75 
-##  9 Stein        0.75 
-## 10 schneiden    0.74 
-## 11 Tiger        0.74 
-## 12 Kind         0.73 
-## 13 Mann         0.73 
-## 14 eins         0.72 
-## 15 jagen        0.72 
-## 16 kochen       0.71 
-## 17 dies         0.7  
-## 18 klein        0.69 
-## 19 essen        0.68 
-## 20 Wasser       0.67 
-## 21 Frau         0.66 
-## 22 viele        0.66 
-## 23 Hirsch       0.64 
-## 24 verstecken   0.63 
-## 25 gut          0.62 
-## 26 scharf       0.62 
-## 27 stumpf       0.62 
-## 28 schlecht     0.580
-## 29 das          0.51 
-## 30 (ver)sammeln 0</code></pre>
-<pre class="r"><code>pol %&gt;% group_by(input) %&gt;%
+##    choice       ACC
+##    &lt;chr&gt;      &lt;dbl&gt;
+##  1 schlafen   1    
+##  2 schlecht   0.97 
+##  3 essen      0.96 
+##  4 Kind       0.94 
+##  5 Tiger      0.92 
+##  6 Wasser     0.91 
+##  7 jagen      0.89 
+##  8 schneiden  0.86 
+##  9 Schlange   0.85 
+## 10 groß       0.8  
+## 11 hämmern    0.8  
+## 12 Feuer      0.79 
+## 13 klein      0.79 
+## 14 gut        0.75 
+## 15 Mann       0.72 
+## 16 Stein      0.71 
+## 17 Fleisch    0.69 
+## 18 eins       0.68 
+## 19 Hirsch     0.67 
+## 20 Frau       0.65 
+## 21 kochen     0.65 
+## 22 verstecken 0.64 
+## 23 Frucht     0.62 
+## 24 viele      0.62 
+## 25 Messer     0.570
+## 26 stumpf     0.55 
+## 27 dies       0.54 
+## 28 scharf     0.54 
+## 29 das        0.28 
+## 30 &quot;&quot;         0</code></pre>
+<pre class="r"><code>pol %&gt;% group_by(choice) %&gt;%
   summarize(ACC = mean(ACC)) %&gt;%
   mutate(ACC = round(ACC, 2)) %&gt;% 
   arrange(desc(ACC)) %&gt;% 
   print(n = Inf)</code></pre>
-<pre><code>## # A tibble: 32 x 2
-##    input           ACC
-##    &lt;chr&gt;         &lt;dbl&gt;
-##  1 zbierać       1    
-##  2 owoc          0.82 
-##  3 mięso         0.81 
-##  4 tygrys        0.8  
-##  5 kamień        0.76 
-##  6 walić         0.76 
-##  7 wąż           0.75 
-##  8 nóż           0.7  
-##  9 spać          0.7  
-## 10 duży          0.69 
-## 11 dziecko       0.68 
-## 12 jeden         0.68 
-## 13 polować       0.68 
-## 14 chować        0.67 
-## 15 woda          0.67 
-## 16 jeść          0.65 
-## 17 dobry         0.64 
-## 18 zły           0.64 
-## 19 ogień         0.63 
-## 20 kobieta       0.61 
-## 21 mały          0.6  
-## 22 jeleń         0.580
-## 23 mężczyzna     0.570
-## 24 to            0.570
-## 25 gotować       0.56 
-## 26 ciąć          0.54 
-## 27 ostry         0.52 
-## 28 tamto         0.51 
-## 29 wiele         0.46 
-## 30 tępy          0.43 
-## 31 chować (się)  0    
-## 32 zbierać (się) 0</code></pre>
+<pre><code>## # A tibble: 30 x 2
+##    choice      ACC
+##    &lt;chr&gt;     &lt;dbl&gt;
+##  1 spać       0.99
+##  2 jeść       0.94
+##  3 dziecko    0.9 
+##  4 tygrys     0.86
+##  5 polować    0.79
+##  6 walić      0.75
+##  7 woda       0.74
+##  8 ogień      0.73
+##  9 ciąć       0.71
+## 10 wąż        0.7 
+## 11 duży       0.65
+## 12 to         0.64
+## 13 mężczyzna  0.63
+## 14 dobry      0.61
+## 15 zły        0.61
+## 16 jeleń      0.6 
+## 17 kamień     0.6 
+## 18 mięso      0.6 
+## 19 mały       0.59
+## 20 kobieta    0.56
+## 21 gotować    0.53
+## 22 owoc       0.52
+## 23 wiele      0.51
+## 24 jeden      0.48
+## 25 nóż        0.44
+## 26 ostry      0.42
+## 27 tamto      0.39
+## 28 tępy       0.38
+## 29 chować     0.02
+## 30 zbierać    0.02</code></pre>
+<p>Some of this is still suspicious (what’s the empty one, and is schlafen actually exactly 100% correct?).</p>
 <p>Check average per subject:</p>
-<pre class="r"><code>ger %&gt;% group_by(sub) %&gt;%
+<pre class="r"><code>ger_subs &lt;- ger %&gt;% group_by(sub) %&gt;%
   summarize(ACC = mean(ACC)) %&gt;% 
   mutate(ACC = round(ACC, 2)) %&gt;% 
   print(n = Inf)</code></pre>
-<pre><code>## # A tibble: 57 x 2
+<pre><code>## # A tibble: 53 x 2
 ##        sub   ACC
 ##      &lt;int&gt; &lt;dbl&gt;
-##  1 2001960 0.56 
-##  2 2002066 0.71 
-##  3 2002181 0.47 
-##  4 2003687 0.87 
-##  5 2006973 0.66 
-##  6 2007185 0.54 
-##  7 2007197 0.63 
-##  8 2007257 0.73 
-##  9 2007505 0.64 
-## 10 2007575 0.7  
-## 11 2007595 0.73 
-## 12 2008182 0.63 
-## 13 2008469 0.73 
-## 14 2009354 0.69 
-## 15 2009820 0.61 
-## 16 2009857 0.74 
-## 17 2009902 0.77 
-## 18 2010153 0.72 
-## 19 2010577 0.5  
-## 20 2011955 0.72 
-## 21 2013436 0.73 
-## 22 2015119 0.68 
-## 23 2015371 0.71 
-## 24 2016147 0.7  
-## 25 2016253 0.8  
-## 26 2016675 0.79 
-## 27 2017196 0.73 
-## 28 2017558 0.63 
-## 29 2017828 0.77 
-## 30 2018342 0.68 
-## 31 2018651 0.63 
-## 32 2018699 0.6  
-## 33 2019007 0.63 
-## 34 2019115 0.74 
-## 35 2019961 0.63 
-## 36 2020666 0.64 
-## 37 2020772 0.7  
-## 38 2020887 0.73 
-## 39 2021088 0.81 
-## 40 2021203 0.580
-## 41 2021892 0.71 
-## 42 2021951 0.72 
-## 43 2022372 0.63 
-## 44 2024982 0.73 
-## 45 2025088 0.62 
-## 46 2025321 0.66 
-## 47 2026290 0.79 
-## 48 2026502 0.72 
-## 49 2026608 0.71 
-## 50 2028933 0.76 
-## 51 2032454 0.79 
-## 52 2035082 0.66 
-## 53 2035188 0.76 
-## 54 2035314 0.84 
-## 55 2036644 0.69 
-## 56 2036752 0.73 
-## 57 2037056 0.580</code></pre>
-<pre class="r"><code>pol %&gt;% group_by(sub) %&gt;%
+##  1 2002065 0.71 
+##  2 2003686 0.87 
+##  3 2006972 0.66 
+##  4 2006991 0.64 
+##  5 2007184 0.54 
+##  6 2007256 0.73 
+##  7 2007574 0.7  
+##  8 2007594 0.73 
+##  9 2007941 0.8  
+## 10 2008181 0.63 
+## 11 2008468 0.73 
+## 12 2009353 0.69 
+## 13 2009819 0.61 
+## 14 2009856 0.74 
+## 15 2009901 0.77 
+## 16 2010152 0.72 
+## 17 2011489 0.74 
+## 18 2011954 0.72 
+## 19 2013435 0.73 
+## 20 2015118 0.68 
+## 21 2015370 0.71 
+## 22 2016146 0.7  
+## 23 2016252 0.8  
+## 24 2016674 0.79 
+## 25 2017195 0.73 
+## 26 2017540 0.69 
+## 27 2017557 0.63 
+## 28 2017827 0.77 
+## 29 2018341 0.68 
+## 30 2018650 0.63 
+## 31 2019114 0.74 
+## 32 2020665 0.64 
+## 33 2020771 0.7  
+## 34 2020886 0.73 
+## 35 2021087 0.81 
+## 36 2021202 0.580
+## 37 2021891 0.71 
+## 38 2022037 0.71 
+## 39 2022371 0.63 
+## 40 2024981 0.73 
+## 41 2025087 0.62 
+## 42 2025320 0.66 
+## 43 2026289 0.79 
+## 44 2026501 0.72 
+## 45 2026607 0.71 
+## 46 2028932 0.76 
+## 47 2032453 0.79 
+## 48 2035081 0.66 
+## 49 2035187 0.76 
+## 50 2035313 0.84 
+## 51 2036643 0.69 
+## 52 2036751 0.73 
+## 53 2037055 0.580</code></pre>
+<pre class="r"><code>pol_subs &lt;- pol %&gt;% group_by(sub) %&gt;%
   summarize(ACC = mean(ACC)) %&gt;% 
   mutate(ACC = round(ACC, 2)) %&gt;% 
   print(n = Inf)</code></pre>
-<pre><code>## # A tibble: 32 x 2
+<pre><code>## # A tibble: 33 x 2
 ##        sub   ACC
 ##      &lt;int&gt; &lt;dbl&gt;
-##  1 1997874 0.89 
-##  2 2009277 0.52 
-##  3 2011225 0.52 
-##  4 2011259 0.67 
-##  5 2011661 0.66 
-##  6 2013051 0.55 
-##  7 2013478 0.52 
-##  8 2014004 0.47 
-##  9 2014368 0.61 
-## 10 2014900 0.6  
-## 11 2014968 0.61 
-## 12 2015927 0.52 
-## 13 2016033 0.64 
-## 14 2017093 0.62 
-## 15 2017373 0.59 
-## 16 2018013 0.53 
-## 17 2018041 0.69 
-## 18 2018230 0.61 
-## 19 2018421 0.580
-## 20 2018879 0.5  
-## 21 2019534 0.68 
-## 22 2020484 0.570
-## 23 2021622 0.71 
-## 24 2021728 0.61 
-## 25 2022234 0.62 
-## 26 2022849 0.67 
-## 27 2023368 0.61 
-## 28 2023456 0.63 
-## 29 2023711 0.570
-## 30 2024564 0.580
-## 31 2028145 0.59 
-## 32 2034654 0.52</code></pre>
+##  1 1997873 0.89 
+##  2 2008029 0.51 
+##  3 2009276 0.52 
+##  4 2011224 0.52 
+##  5 2011258 0.67 
+##  6 2011660 0.66 
+##  7 2014003 0.47 
+##  8 2014367 0.61 
+##  9 2014762 0.63 
+## 10 2014899 0.6  
+## 11 2015078 0.59 
+## 12 2015926 0.52 
+## 13 2016032 0.64 
+## 14 2017372 0.59 
+## 15 2018012 0.53 
+## 16 2018040 0.69 
+## 17 2018229 0.61 
+## 18 2018420 0.580
+## 19 2018878 0.5  
+## 20 2019533 0.68 
+## 21 2020483 0.570
+## 22 2021621 0.71 
+## 23 2021727 0.61 
+## 24 2022233 0.62 
+## 25 2022848 0.67 
+## 26 2023367 0.61 
+## 27 2023455 0.63 
+## 28 2023604 0.51 
+## 29 2023710 0.570
+## 30 2023816 0.44 
+## 31 2024563 0.580
+## 32 2028144 0.59 
+## 33 2034653 0.52</code></pre>
+</div>
+<div id="first-logistic-regression-model" class="section level1">
+<h1>First logistic regression model:</h1>
+<p>We want to look at the posterior of accuracy values, specifically at the intercept. If the mass of the posterior values are far away from the 60%, then we can conclude that participants performed the task with above-chance performance.</p>
+<p>For now we will build separate models for German and Polish, but this will be done within one model later.</p>
+<p>First, we set some options for Bayesian computation. This ensures that we’ll use all cores from our processor so that MCMC chains can be run in parallel.</p>
+<pre class="r"><code>options(mc.cores=parallel::detectCores())</code></pre>
+<p>Next, we set the prior for the intercept. We want a sufficiently wide prior that is centered at 60%, which is the chance baseline. So let’s compute the logit value for 60% first.</p>
+<pre class="r"><code>qlogis(0.6)</code></pre>
+<pre><code>## [1] 0.4054651</code></pre>
+<pre class="r"><code># Save value:
+my_logit &lt;- qlogis(0.6)</code></pre>
+<p>If we set a normal prior on this baseline value with a +2/-2 standard deviation, then that’s saying that we expect 95% of all responses to be between these two values.</p>
+<pre class="r"><code>plogis(0.6 - 2)</code></pre>
+<pre><code>## [1] 0.1978161</code></pre>
+<pre class="r"><code>plogis(0.6 + 2)</code></pre>
+<pre><code>## [1] 0.9308616</code></pre>
+<p>So, if we take this prior, we are effectively saying that we assume that 95% of all responses are going to lie between average accuracy values of 20% and 93%, which seems reasonable.</p>
+<pre class="r"><code>my_priors &lt;- c(prior(normal(0.6, 2), class = 'Intercept'))
+# Check:
+my_priors</code></pre>
+<pre><code>## Intercept ~ normal(0.6, 2)</code></pre>
+<p>Fit the model for German:</p>
+<pre class="r"><code>ger.mdl &lt;- brm(ACC ~ 1 + (1|sub) + (1|item),
+               data = ger, family = bernoulli(), prior = my_priors,
+               chains = 4, warmup = 2000, iter = 4000)
+save(ger.mdl, file = '../models/ger.mdl')
+pol.mdl &lt;- brm(ACC ~ 1 + (1|sub) + (1|item),
+               data = ger, family = bernoulli(), prior = my_priors,
+               chains = 4, warmup = 2000, iter = 4000)
+save(pol.mdl, file = '../models/pol.mdl')
+# control = list(adapt_delta = 0.99))</code></pre>
+<p>Show the summaries:</p>
+<pre class="r"><code>summary(ger.mdl)</code></pre>
+<pre><code>##  Family: bernoulli 
+##   Links: mu = logit 
+## Formula: ACC ~ 1 + (1 | sub) + (1 | item) 
+##    Data: ger (Number of observations: 4770) 
+## Samples: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+##          total post-warmup samples = 8000
+## 
+## Group-Level Effects: 
+## ~item (Number of levels: 90) 
+##               Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+## sd(Intercept)     1.60      0.15     1.34     1.92       2021 1.00
+## 
+## ~sub (Number of levels: 53) 
+##               Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+## sd(Intercept)     0.35      0.06     0.24     0.47       2879 1.00
+## 
+## Population-Level Effects: 
+##           Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+## Intercept     1.18      0.18     0.83     1.53       1051 1.00
+## 
+## Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
+## is a crude measure of effective sample size, and Rhat is the potential 
+## scale reduction factor on split chains (at convergence, Rhat = 1).</code></pre>
+<pre class="r"><code>summary(pol.mdl)</code></pre>
+<pre><code>##  Family: bernoulli 
+##   Links: mu = logit 
+## Formula: ACC ~ 1 + (1 | sub) + (1 | item) 
+##    Data: ger (Number of observations: 4770) 
+## Samples: 4 chains, each with iter = 4000; warmup = 2000; thin = 1;
+##          total post-warmup samples = 8000
+## 
+## Group-Level Effects: 
+## ~item (Number of levels: 90) 
+##               Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+## sd(Intercept)     1.61      0.16     1.33     1.94       1414 1.00
+## 
+## ~sub (Number of levels: 53) 
+##               Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+## sd(Intercept)     0.35      0.06     0.24     0.47       3181 1.00
+## 
+## Population-Level Effects: 
+##           Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
+## Intercept     1.18      0.19     0.80     1.56        876 1.00
+## 
+## Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
+## is a crude measure of effective sample size, and Rhat is the potential 
+## scale reduction factor on split chains (at convergence, Rhat = 1).</code></pre>
+<p>Some of the Rhat values are worrisome (not exactly equals to 1.00), so this needs to be investigated.</p>
+<p>To interpret this better, let’s look at the probabilities that form the 95% credible interval.</p>
+<pre class="r"><code># Posterior average (percentage), and lower and upper bound of 95% CI, German:
+plogis(fixef(ger.mdl)[-2])</code></pre>
+<pre><code>## [1] 0.7646605 0.6966044 0.8214078</code></pre>
+<pre class="r"><code># Posterior average (percentage), and lower and upper bound of 95% CI, Polish:
+plogis(fixef(pol.mdl)[-2])</code></pre>
+<pre><code>## [1] 0.7654422 0.6895599 0.8256627</code></pre>
+<p>Something’s off (needs to be investigated) since both German and Polish have higher values than what is expected.</p>
+<p>(Quick check with lme4)</p>
+<pre class="r"><code>library(lme4)</code></pre>
+<pre><code>## Loading required package: Matrix</code></pre>
+<pre><code>## 
+## Attaching package: 'Matrix'</code></pre>
+<pre><code>## The following object is masked from 'package:tidyr':
+## 
+##     expand</code></pre>
+<pre><code>## 
+## Attaching package: 'lme4'</code></pre>
+<pre><code>## The following object is masked from 'package:brms':
+## 
+##     ngrps</code></pre>
+<pre class="r"><code>ger.lme4 &lt;- glmer(ACC ~ 1 + (1|sub) + (1|item),
+               data = ger, family = binomial)
+summary(ger.lme4)</code></pre>
+<pre><code>## Generalized linear mixed model fit by maximum likelihood (Laplace
+##   Approximation) [glmerMod]
+##  Family: binomial  ( logit )
+## Formula: ACC ~ 1 + (1 | sub) + (1 | item)
+##    Data: ger
+## 
+##      AIC      BIC   logLik deviance df.resid 
+##   4795.2   4814.6  -2394.6   4789.2     4767 
+## 
+## Scaled residuals: 
+##     Min      1Q  Median      3Q     Max 
+## -6.1644 -0.4517  0.3408  0.6165  2.8294 
+## 
+## Random effects:
+##  Groups Name        Variance Std.Dev.
+##  item   (Intercept) 2.4056   1.5510  
+##  sub    (Intercept) 0.1116   0.3341  
+## Number of obs: 4770, groups:  item, 90; sub, 53
+## 
+## Fixed effects:
+##             Estimate Std. Error z value Pr(&gt;|z|)    
+## (Intercept)   1.1883     0.1761   6.748  1.5e-11 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</code></pre>
+<pre class="r"><code>plogis(fixef(ger.lme4))</code></pre>
+<pre><code>## (Intercept) 
+##    0.766435</code></pre>
+<p>This model also is too high. I think this has to do with properties of the binomial, which may draw values away from a logit of 0. Will have to investigate this. So for now, let’s do a quick check for German and Polish with some non-parametric tests (subjects-analysis only).</p>
+<pre class="r"><code>wilcox.test(ger_subs$ACC, mu = 0.6)</code></pre>
+<pre><code>## 
+##  Wilcoxon signed rank test with continuity correction
+## 
+## data:  ger_subs$ACC
+## V = 1414, p-value = 6.262e-10
+## alternative hypothesis: true location is not equal to 0.6</code></pre>
+<pre class="r"><code>wilcox.test(pol_subs$ACC, mu = 0.6)</code></pre>
+<pre><code>## Warning in wilcox.test.default(pol_subs$ACC, mu = 0.6): cannot compute
+## exact p-value with ties</code></pre>
+<pre><code>## Warning in wilcox.test.default(pol_subs$ACC, mu = 0.6): cannot compute
+## exact p-value with zeroes</code></pre>
+<pre><code>## 
+##  Wilcoxon signed rank test with continuity correction
+## 
+## data:  pol_subs$ACC
+## V = 229, p-value = 0.5181
+## alternative hypothesis: true location is not equal to 0.6</code></pre>
+<p>Based on this, the Germans perform significantly better than chance, but the Polish do not.</p>
+<div id="do-list" class="section level2">
+<h2>2do list:</h2>
+<ul>
+<li>investigate MCMC estimation problems (also: trace plots)</li>
+<li>investigate logit boundary effects</li>
+<li>then, make plots of posteriors</li>
+<li>with Christopher: fix remaining issues in online script / make sure interpretation is correct</li>
+</ul>
+</div>
 </div>
 
 

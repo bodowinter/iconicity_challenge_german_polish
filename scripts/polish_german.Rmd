@@ -14,8 +14,9 @@ knitr::opts_chunk$set(echo = TRUE)
 Load libraries:
 
 ```{r libs, message = FALSE}
-library(tidyverse)
-library(stringr)
+library(tidyverse) # for data carpentry
+library(stringr) # for string processing
+library(brms) # for bayesian models
 ```
 
 Let's load in the data files:
@@ -33,26 +34,88 @@ Selected only those columns needed (for now):
 
 ```{r rid_cols}
 ger <- select(ger,
-              sessionid,
-              inputvalue, options,
+              userid, itemid,
+              firstlanguage, participantage, sex,
+              position,
+              expected, inputvalue,
+              options,
               repetitions)
 pol <- select(pol,
-              sessionid,
-              inputvalue, options,
+              userid, itemid,
+              firstlanguage, participantage, sex,
+              position,
+              expected, inputvalue,
+              options,
               repetitions)
 ```
 
-(We are going to ignore "foreignlanguages" for now.)
-
-So, Ola/Suse: I presume sessionid can be used to identify participants? In that case, let's rename this to subject:
+Rename relevant columns for easier typing.
 
 ```{r renaming}
 ger <- rename(ger,
-              sub = sessionid,
+              sub = userid,
+              item = itemid,
+              language = firstlanguage,
+              age = participantage,
               input = inputvalue)
 pol <- rename(pol,
-              sub = sessionid,
+              sub = userid,
+              item = itemid,
+              language = firstlanguage,
+              age = participantage,
               input = inputvalue)
+```
+
+Next, I want to extract the relevant options bit. This is really ugly for now (will think of a more elegant regex one-liner soon). This is based on the assumption that the first item is the expected stimulus.
+
+```{r extract_options}
+# Extract response string by splitting at the bracket:
+
+ger_resp <- str_split(ger$options, '\\[', simplify = TRUE)[, 2]
+pol_resp <- str_split(pol$options, '\\[', simplify = TRUE)[, 2]
+
+# Get rid of first two special characters:
+
+ger_resp <- str_sub(ger_resp, 2, str_length(ger_resp))
+pol_resp <- str_sub(pol_resp, 2, str_length(pol_resp))
+
+# Take the word out:
+
+suppressWarnings(ger$choice <- separate(tibble(ger_resp),
+                                        ger_resp, into = LETTERS)[, 1]$A)
+suppressWarnings(pol$choice <- separate(tibble(pol_resp),
+                                        pol_resp, into = LETTERS)[, 1]$A)
+
+## Let's get rid of the options column:
+
+ger <- select(ger, -options)
+pol <- select(pol, -options)
+
+# Sanity-check: How does inputvalue versus choice look like?
+
+select(ger, input, choice)
+select(pol, input, choice)
+```
+
+Take only the native speakers of each language:
+
+```{r nativespeakers}
+# Check responses:
+
+ger_all_langs <- unique(ger$language)
+pol_all_langs <- unique(pol$language)
+ger_all_langs
+pol_all_langs
+
+# Valid:
+
+ger_speakers <- ger_all_langs[str_detect(ger_all_langs, '(d|D)eutsch')]
+pol_speakers <- pol_all_langs[str_detect(pol_all_langs, '(p|P)olski')]
+
+# Take only those:
+
+ger <- filter(ger, language %in% ger_speakers)
+pol <- filter(pol, language %in% pol_speakers)
 ```
 
 Get rid of those that didn't complete the full experiment:
@@ -89,61 +152,51 @@ ger <- filter(ger, !(sub %in% bad_germans))
 pol <- filter(pol, !(sub %in% bad_poles))
 ```
 
-Is this right that 41% of all Polish participants didn't complete the experiment? For Germans it's 27%.
-
-Next, I want to extract the relevant options bit. This is really ugly for now (will think of a more elegant regex one-liner soon):
-
-```{r extract_options}
-# Extract response string by splitting at the bracket:
-
-ger_resp <- str_split(ger$options, '\\[', simplify = TRUE)[, 2]
-pol_resp <- str_split(pol$options, '\\[', simplify = TRUE)[, 2]
-
-# Get rid of first two special characters:
-
-ger_resp <- str_sub(ger_resp, 2, str_length(ger_resp))
-pol_resp <- str_sub(pol_resp, 2, str_length(pol_resp))
-
-# Take the word out:
-
-suppressWarnings(ger$choice <- separate(tibble(ger_resp),
-                                        ger_resp, into = LETTERS)[, 1]$A)
-suppressWarnings(pol$choice <- separate(tibble(pol_resp),
-                                        pol_resp, into = LETTERS)[, 1]$A)
-
-## Let's get rid of the options column:
-
-ger <- select(ger, -options)
-pol <- select(pol, -options)
-
-# Sanity-check: How does inputvalue versus choice look like?
-
-select(ger, input, choice)
-select(pol, input, choice)
-```
+So, 38% of all Polish participants didn't complete the experiment, and 22% of all Germans.
 
 Let's get rid of any subject that has gotten the clapping wrong at least once:
 
 ```{r clap_exclude}
 # Subset of clapping items:
 
-ger_claps <- filter(ger, input == 'Klatschen')
-pol_claps <- filter(pol, input == 'klaskanie')
+ger_claps <- filter(ger, choice == 'Klatschen')
+pol_claps <- filter(pol, choice == 'klaskanie')
 
-# Get all the wrong claps:
+# Identifier for whether clap was identified correctly:
 
-bad_germans <- ger_claps$input != ger_claps$choice
-bad_poles <- pol_claps$input != pol_claps$choice
+ger_claps <- mutate(ger_claps,
+                    clapACC = ifelse(input == 'Klatschen', 1, 0))
+pol_claps <- mutate(pol_claps,
+                    clapACC = ifelse(input == 'klaskanie', 1, 0))
+
+# Tabulate accuracy by subject:
+
+ger_clap_subs <- ger_claps %>%
+  group_by(sub) %>% 
+  summarize(ACC = sum(clapACC))
+pol_clap_subs <- pol_claps %>%
+  group_by(sub) %>% 
+  summarize(ACC = sum(clapACC))
+
+# How many incorrect?
+
+nrow(filter(ger_clap_subs, ACC != 10))
+nrow(filter(pol_clap_subs, ACC != 10))
+
+# Out of how many?
+
+nrow(ger_clap_subs)
+nrow(pol_clap_subs)
+
+# Percentage:
+
+nrow(filter(ger_clap_subs, ACC != 10)) / nrow(ger_clap_subs)
+nrow(filter(pol_clap_subs, ACC != 10)) / nrow(pol_clap_subs)
 
 # Get the subjects for which the claps were wrong:
 
-bad_germans <- unique(ger_claps$sub[bad_germans])
-bad_poles <- unique(pol_claps$sub[bad_poles])
-
-# How many subjects do we have right now?
-
-length(unique(ger$sub))
-length(unique(pol$sub))
+bad_germans <- filter(ger_clap_subs, ACC != 10) %>% pull(sub)
+bad_poles <- filter(pol_clap_subs, ACC != 10) %>% pull(sub)
 
 # Extract the wrong-clappers:
 
@@ -153,7 +206,9 @@ pol <- filter(pol,
               !(sub %in% bad_poles))
 ```
 
-Let's get rid of the kiki and bouba and r/l stims, as well as the clapping items:
+So about 10% of the remaining people had to be excluded because they got the claps wrong.
+
+Let's get rid of the kiki and bouba and r/l stims, as well as the clapping trials:
 
 ```{r kiki_r_l_extract}
 # Define vector of trials to extract:
@@ -163,9 +218,9 @@ bad_trials <- c('r', 'l', 'kiki', 'bouba', 'klaskanie', 'Klatschen')
 # Get rid of those trials:
 
 ger <- filter(ger,
-              !(input %in% bad_trials))
+              !(choice %in% bad_trials))
 pol <- filter(pol,
-              !(input %in% bad_trials))
+              !(choice %in% bad_trials))
 ```
 
 Let's check whether this work. Everybody should have 90 data points now (3 * 30).
@@ -175,16 +230,21 @@ table(ger$sub)
 table(pol$sub)
 ```
 
-Why are there still people with more than 90 data points?
+We now only have people with = 90 items.
 
 Each item should occur in equal proportions:
 
 ```{r input_check}
-table(ger$input)
-table(pol$input)
+table(ger$item)
+table(pol$item)
+
+# Check whether they are all the same to the number of subs:
+
+all(table(ger$item) == length(unique(ger$sub)))
+all(table(pol$item) == length(unique(pol$sub)))
 ```
 
-This does not seem to be right: How come we have only two "zbierać", and shouldn't all be in equal proportions anyway?
+That is the case. So it all looks good now.
 
 ## Check accuracy:
 
@@ -204,34 +264,133 @@ round(mean(ger$ACC), 2)
 round(mean(pol$ACC), 2)
 ```
 
-69% for the Germans and 60% for the Poles? That seems a bit high?
+71% for Germans, 60% for Poles. So the with 1 out 6 options, the Poles are performing exactly at chance.
 
 Let's check accuracy per concept:
 
 ```{r acc_per_concept}
-ger %>% group_by(input) %>%
+ger %>% group_by(choice) %>%
   summarize(ACC = mean(ACC)) %>%
   mutate(ACC = round(ACC, 2)) %>% 
   arrange(desc(ACC)) %>% 
   print(n = Inf)
-pol %>% group_by(input) %>%
+pol %>% group_by(choice) %>%
   summarize(ACC = mean(ACC)) %>%
   mutate(ACC = round(ACC, 2)) %>% 
   arrange(desc(ACC)) %>% 
   print(n = Inf)
 ```
+
+Some of this is still suspicious (what's the empty one, and is schlafen actually exactly 100% correct?).
 
 Check average per subject:
 
 ```{r avg_per_sub}
-ger %>% group_by(sub) %>%
+ger_subs <- ger %>% group_by(sub) %>%
   summarize(ACC = mean(ACC)) %>% 
   mutate(ACC = round(ACC, 2)) %>% 
   print(n = Inf)
-pol %>% group_by(sub) %>%
+pol_subs <- pol %>% group_by(sub) %>%
   summarize(ACC = mean(ACC)) %>% 
   mutate(ACC = round(ACC, 2)) %>% 
   print(n = Inf)
 ```
+
+# First logistic regression model:
+
+We want to look at the posterior of accuracy values, specifically at the intercept. If the mass of the posterior values are far away from the 60%, then we can conclude that participants performed the task with above-chance performance.
+
+For now we will build separate models for German and Polish, but this will be done within one model later.
+
+First, we set some options for Bayesian computation. This ensures that we'll use all cores from our processor so that MCMC chains can be run in parallel.
+
+```{r parallel_cores}
+options(mc.cores=parallel::detectCores())
+```
+
+Next, we set the prior for the intercept. We want a sufficiently wide prior that is centered at 60%, which is the chance baseline. So let's compute the logit value for 60% first.
+
+```{r compute_logit}
+qlogis(0.6)
+
+# Save value:
+my_logit <- qlogis(0.6)
+```
+
+If we set a normal prior on this baseline value with a +2/-2 standard deviation, then that's saying that we expect 95% of all responses to be between these two values.
+
+```{r explore_priors}
+plogis(0.6 - 2)
+plogis(0.6 + 2)
+```
+
+So, if we take this prior, we are effectively saying that we assume that 95% of all responses are going to lie between average accuracy values of 20% and 93%, which seems reasonable.
+
+```{r}
+my_priors <- c(prior(normal(0.6, 2), class = 'Intercept'))
+# Check:
+my_priors
+```
+
+Fit the model for German:
+
+```{r ger_bayes, cache = TRUE, message = FALSE}
+ger.mdl <- brm(ACC ~ 1 + (1|sub) + (1|item),
+               data = ger, family = bernoulli(), prior = my_priors,
+               chains = 4, warmup = 2000, iter = 4000)
+save(ger.mdl, file = '../models/ger.mdl')
+pol.mdl <- brm(ACC ~ 1 + (1|sub) + (1|item),
+               data = ger, family = bernoulli(), prior = my_priors,
+               chains = 4, warmup = 2000, iter = 4000)
+save(pol.mdl, file = '../models/pol.mdl')
+# control = list(adapt_delta = 0.99))
+```
+
+Show the summaries:
+
+```{r show_summaries}
+summary(ger.mdl)
+summary(pol.mdl)
+```
+
+Some of the Rhat values are worrisome (not exactly equals to 1.00), so this needs to be investigated.
+
+To interpret this better, let's look at the probabilities that form the 95% credible interval.
+
+```{r backtransform_probs}
+# Posterior average (percentage), and lower and upper bound of 95% CI, German:
+plogis(fixef(ger.mdl)[-2])
+# Posterior average (percentage), and lower and upper bound of 95% CI, Polish:
+plogis(fixef(pol.mdl)[-2])
+```
+
+Something's off (needs to be investigated) since both German and Polish have higher values than what is expected.
+
+(Quick check with lme4)
+
+```{r lme4}
+library(lme4)
+ger.lme4 <- glmer(ACC ~ 1 + (1|sub) + (1|item),
+               data = ger, family = binomial)
+summary(ger.lme4)
+plogis(fixef(ger.lme4))
+```
+
+This model also is too high. I think this has to do with properties of the binomial, which may draw values away from a logit of 0. Will have to investigate this. So for now, let's do a quick check for German and Polish with some non-parametric tests (subjects-analysis only).
+
+```{r ACC_sub_wilcox}
+wilcox.test(ger_subs$ACC, mu = 0.6)
+wilcox.test(pol_subs$ACC, mu = 0.6)
+```
+
+Based on this, the Germans perform significantly better than chance, but the Polish do not.
+
+## 2do list:
+
+* investigate MCMC estimation problems (also: trace plots)
+* investigate logit boundary effects
+* then, make plots of posteriors
+* with Christopher: fix remaining issues in online script / make sure interpretation is correct
+
 
 
