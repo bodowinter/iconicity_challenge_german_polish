@@ -298,7 +298,7 @@ pol_subs <- pol %>% group_by(sub) %>%
 
 # First logistic regression model:
 
-We want to look at the posterior of accuracy values, specifically at the intercept. If the mass of the posterior values are far away from the 60%, then we can conclude that participants performed the task with above-chance performance.
+We want to look at the posterior of accuracy values, specifically at the intercept. If the mass of the posterior values are far away from the 1 / 6 chance level = 0.167, then we can conclude that participants performed the task with above-chance performance.
 
 For now we will build separate models for German and Polish, but this will be done within one model later.
 
@@ -308,37 +308,36 @@ First, we set some options for Bayesian computation. This ensures that we'll use
 options(mc.cores=parallel::detectCores())
 ```
 
-Next, we set the prior for the intercept. We want a sufficiently wide prior that is centered at 60%, which is the chance baseline. So let's compute the logit value for 60% first.
+Next, we set the prior for the intercept. We want a sufficiently wide prior that is centered at 1/6, which is the chance baseline. So let's compute the logit value for 1/6 first.
 
 ```{r compute_logit}
-qlogis(0.6)
+qlogis(1 / 6)
 
 # Save value:
-my_logit <- qlogis(0.6)
+my_logit <- qlogis(1 / 6)
 ```
 
-If we set a normal prior on this baseline value with a +2/-2 standard deviation, then that's saying that we expect 95% of all responses to be between these two values.
+If we set a normal prior on this baseline value with a +3/-3 standard deviation, then that's saying that we expect 95% of all responses to be between these two values.
 
 ```{r explore_priors}
-plogis(0.6 - 2)
-plogis(0.6 + 2)
+plogis(my_logit - 3)
+plogis(my_logit + 3)
 ```
 
-So, if we take this prior, we are effectively saying that we assume that 95% of all responses are going to lie between average accuracy values of 20% and 93%, which seems reasonable.
+So, if we take this prior, we are effectively saying that we assume that 95% of all responses are going to lie between average accuracy values of 1% and 80%, which seems reasonable.
 
-```{r}
-my_priors <- c(prior(normal(0.6, 2), class = 'Intercept'))
+Set the priors and fit the model for German:
+
+```{r both_bayes, cache = TRUE, message = FALSE}
+my_priors <- c(prior(normal(-1.609438, 3), class = 'Intercept'))
 # Check:
 my_priors
-```
-
-Fit the model for German:
-
-```{r ger_bayes, cache = TRUE, message = FALSE}
+# German model:
 ger.mdl <- brm(ACC ~ 1 + (1|sub) + (1|item),
                data = ger, family = bernoulli(), prior = my_priors,
                chains = 4, warmup = 2000, iter = 4000)
 save(ger.mdl, file = '../models/ger.mdl')
+# Polish model:
 pol.mdl <- brm(ACC ~ 1 + (1|sub) + (1|item),
                data = ger, family = bernoulli(), prior = my_priors,
                chains = 4, warmup = 2000, iter = 4000)
@@ -379,8 +378,8 @@ plogis(fixef(ger.lme4))
 This model also is too high. I think this has to do with properties of the binomial, which may draw values away from a logit of 0. Will have to investigate this. So for now, let's do a quick check for German and Polish with some non-parametric tests (subjects-analysis only).
 
 ```{r ACC_sub_wilcox}
-wilcox.test(ger_subs$ACC, mu = 0.6)
-wilcox.test(pol_subs$ACC, mu = 0.6)
+wilcox.test(ger_subs$ACC, mu = 1 / 6)
+wilcox.test(pol_subs$ACC, mu = 1 / 6)
 ```
 
 Based on this, the Germans perform significantly better than chance, but the Polish do not.
@@ -388,8 +387,8 @@ Based on this, the Germans perform significantly better than chance, but the Pol
 Let's do the same for items:
 
 ```{r ACC_items_wilcox}
-wilcox.test(ger_item_avg$ACC, mu = 0.6)
-wilcox.test(pol_item_avg$ACC, mu = 0.6)
+wilcox.test(ger_item_avg$ACC, mu = 1 / 6)
+wilcox.test(pol_item_avg$ACC, mu = 1 / 6)
 ```
 
 Same result, Germans significant, Polish not. This result has to be taken with a grain of salt however as there's still two weird items in there I believe.

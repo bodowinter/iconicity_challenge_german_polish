@@ -686,30 +686,32 @@ pol &lt;- mutate(pol,
 </div>
 <div id="first-logistic-regression-model" class="section level1">
 <h1>First logistic regression model:</h1>
-<p>We want to look at the posterior of accuracy values, specifically at the intercept. If the mass of the posterior values are far away from the 60%, then we can conclude that participants performed the task with above-chance performance.</p>
+<p>We want to look at the posterior of accuracy values, specifically at the intercept. If the mass of the posterior values are far away from the 1 / 6 chance level = 0.167, then we can conclude that participants performed the task with above-chance performance.</p>
 <p>For now we will build separate models for German and Polish, but this will be done within one model later.</p>
 <p>First, we set some options for Bayesian computation. This ensures that we’ll use all cores from our processor so that MCMC chains can be run in parallel.</p>
 <pre class="r"><code>options(mc.cores=parallel::detectCores())</code></pre>
-<p>Next, we set the prior for the intercept. We want a sufficiently wide prior that is centered at 60%, which is the chance baseline. So let’s compute the logit value for 60% first.</p>
-<pre class="r"><code>qlogis(0.6)</code></pre>
-<pre><code>## [1] 0.4054651</code></pre>
+<p>Next, we set the prior for the intercept. We want a sufficiently wide prior that is centered at 1/6, which is the chance baseline. So let’s compute the logit value for 1/6 first.</p>
+<pre class="r"><code>qlogis(1 / 6)</code></pre>
+<pre><code>## [1] -1.609438</code></pre>
 <pre class="r"><code># Save value:
-my_logit &lt;- qlogis(0.6)</code></pre>
-<p>If we set a normal prior on this baseline value with a +2/-2 standard deviation, then that’s saying that we expect 95% of all responses to be between these two values.</p>
-<pre class="r"><code>plogis(0.6 - 2)</code></pre>
-<pre><code>## [1] 0.1978161</code></pre>
-<pre class="r"><code>plogis(0.6 + 2)</code></pre>
-<pre><code>## [1] 0.9308616</code></pre>
-<p>So, if we take this prior, we are effectively saying that we assume that 95% of all responses are going to lie between average accuracy values of 20% and 93%, which seems reasonable.</p>
-<pre class="r"><code>my_priors &lt;- c(prior(normal(0.6, 2), class = 'Intercept'))
+my_logit &lt;- qlogis(1 / 6)</code></pre>
+<p>If we set a normal prior on this baseline value with a +3/-3 standard deviation, then that’s saying that we expect 95% of all responses to be between these two values.</p>
+<pre class="r"><code>plogis(my_logit - 3)</code></pre>
+<pre><code>## [1] 0.009859241</code></pre>
+<pre class="r"><code>plogis(my_logit + 3)</code></pre>
+<pre><code>## [1] 0.800682</code></pre>
+<p>So, if we take this prior, we are effectively saying that we assume that 95% of all responses are going to lie between average accuracy values of 1% and 80%, which seems reasonable.</p>
+<p>Set the priors and fit the model for German:</p>
+<pre class="r"><code>my_priors &lt;- c(prior(normal(-1.609438, 3), class = 'Intercept'))
 # Check:
 my_priors</code></pre>
-<pre><code>## Intercept ~ normal(0.6, 2)</code></pre>
-<p>Fit the model for German:</p>
-<pre class="r"><code>ger.mdl &lt;- brm(ACC ~ 1 + (1|sub) + (1|item),
+<pre><code>## Intercept ~ normal(-1.609438, 3)</code></pre>
+<pre class="r"><code># German model:
+ger.mdl &lt;- brm(ACC ~ 1 + (1|sub) + (1|item),
                data = ger, family = bernoulli(), prior = my_priors,
                chains = 4, warmup = 2000, iter = 4000)
 save(ger.mdl, file = '../models/ger.mdl')
+# Polish model:
 pol.mdl &lt;- brm(ACC ~ 1 + (1|sub) + (1|item),
                data = ger, family = bernoulli(), prior = my_priors,
                chains = 4, warmup = 2000, iter = 4000)
@@ -727,15 +729,15 @@ save(pol.mdl, file = '../models/pol.mdl')
 ## Group-Level Effects: 
 ## ~item (Number of levels: 90) 
 ##               Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-## sd(Intercept)     1.60      0.15     1.34     1.92       2021 1.00
+## sd(Intercept)     1.60      0.16     1.31     1.94       1444 1.00
 ## 
 ## ~sub (Number of levels: 53) 
 ##               Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-## sd(Intercept)     0.35      0.06     0.24     0.47       2879 1.00
+## sd(Intercept)     0.35      0.06     0.24     0.47       2823 1.00
 ## 
 ## Population-Level Effects: 
 ##           Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-## Intercept     1.18      0.18     0.83     1.53       1051 1.00
+## Intercept     1.20      0.18     0.84     1.56        687 1.00
 ## 
 ## Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
 ## is a crude measure of effective sample size, and Rhat is the potential 
@@ -751,15 +753,15 @@ save(pol.mdl, file = '../models/pol.mdl')
 ## Group-Level Effects: 
 ## ~item (Number of levels: 90) 
 ##               Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-## sd(Intercept)     1.61      0.16     1.33     1.94       1414 1.00
+## sd(Intercept)     1.61      0.15     1.34     1.92       2033 1.00
 ## 
 ## ~sub (Number of levels: 53) 
 ##               Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-## sd(Intercept)     0.35      0.06     0.24     0.47       3181 1.00
+## sd(Intercept)     0.35      0.06     0.24     0.47       3172 1.00
 ## 
 ## Population-Level Effects: 
 ##           Estimate Est.Error l-95% CI u-95% CI Eff.Sample Rhat
-## Intercept     1.18      0.19     0.80     1.56        876 1.00
+## Intercept     1.18      0.19     0.81     1.55        953 1.00
 ## 
 ## Samples were drawn using sampling(NUTS). For each parameter, Eff.Sample 
 ## is a crude measure of effective sample size, and Rhat is the potential 
@@ -768,10 +770,10 @@ save(pol.mdl, file = '../models/pol.mdl')
 <p>To interpret this better, let’s look at the probabilities that form the 95% credible interval.</p>
 <pre class="r"><code># Posterior average (percentage), and lower and upper bound of 95% CI, German:
 plogis(fixef(ger.mdl)[-2])</code></pre>
-<pre><code>## [1] 0.7646605 0.6966044 0.8214078</code></pre>
+<pre><code>## [1] 0.7688222 0.6980583 0.8257449</code></pre>
 <pre class="r"><code># Posterior average (percentage), and lower and upper bound of 95% CI, Polish:
 plogis(fixef(pol.mdl)[-2])</code></pre>
-<pre><code>## [1] 0.7654422 0.6895599 0.8256627</code></pre>
+<pre><code>## [1] 0.7645409 0.6923409 0.8249533</code></pre>
 <p>Something’s off (needs to be investigated) since both German and Polish have higher values than what is expected.</p>
 <p>(Quick check with lme4)</p>
 <pre class="r"><code>library(lme4)</code></pre>
@@ -817,46 +819,42 @@ summary(ger.lme4)</code></pre>
 <pre><code>## (Intercept) 
 ##    0.766435</code></pre>
 <p>This model also is too high. I think this has to do with properties of the binomial, which may draw values away from a logit of 0. Will have to investigate this. So for now, let’s do a quick check for German and Polish with some non-parametric tests (subjects-analysis only).</p>
-<pre class="r"><code>wilcox.test(ger_subs$ACC, mu = 0.6)</code></pre>
+<pre class="r"><code>wilcox.test(ger_subs$ACC, mu = 1 / 6)</code></pre>
 <pre><code>## 
 ##  Wilcoxon signed rank test with continuity correction
 ## 
 ## data:  ger_subs$ACC
-## V = 1414, p-value = 6.262e-10
-## alternative hypothesis: true location is not equal to 0.6</code></pre>
-<pre class="r"><code>wilcox.test(pol_subs$ACC, mu = 0.6)</code></pre>
-<pre><code>## Warning in wilcox.test.default(pol_subs$ACC, mu = 0.6): cannot compute
+## V = 1431, p-value = 2.386e-10
+## alternative hypothesis: true location is not equal to 0.1666667</code></pre>
+<pre class="r"><code>wilcox.test(pol_subs$ACC, mu = 1 / 6)</code></pre>
+<pre><code>## Warning in wilcox.test.default(pol_subs$ACC, mu = 1/6): cannot compute
 ## exact p-value with ties</code></pre>
-<pre><code>## Warning in wilcox.test.default(pol_subs$ACC, mu = 0.6): cannot compute
-## exact p-value with zeroes</code></pre>
 <pre><code>## 
 ##  Wilcoxon signed rank test with continuity correction
 ## 
 ## data:  pol_subs$ACC
-## V = 229, p-value = 0.5181
-## alternative hypothesis: true location is not equal to 0.6</code></pre>
+## V = 561, p-value = 5.56e-07
+## alternative hypothesis: true location is not equal to 0.1666667</code></pre>
 <p>Based on this, the Germans perform significantly better than chance, but the Polish do not.</p>
 <p>Let’s do the same for items:</p>
-<pre class="r"><code>wilcox.test(ger_item_avg$ACC, mu = 0.6)</code></pre>
-<pre><code>## Warning in wilcox.test.default(ger_item_avg$ACC, mu = 0.6): cannot compute
+<pre class="r"><code>wilcox.test(ger_item_avg$ACC, mu = 1 / 6)</code></pre>
+<pre><code>## Warning in wilcox.test.default(ger_item_avg$ACC, mu = 1/6): cannot compute
 ## exact p-value with ties</code></pre>
 <pre><code>## 
 ##  Wilcoxon signed rank test with continuity correction
 ## 
 ## data:  ger_item_avg$ACC
-## V = 386, p-value = 0.001647
-## alternative hypothesis: true location is not equal to 0.6</code></pre>
-<pre class="r"><code>wilcox.test(pol_item_avg$ACC, mu = 0.6)</code></pre>
-<pre><code>## Warning in wilcox.test.default(pol_item_avg$ACC, mu = 0.6): cannot compute
+## V = 463, p-value = 2.23e-06
+## alternative hypothesis: true location is not equal to 0.1666667</code></pre>
+<pre class="r"><code>wilcox.test(pol_item_avg$ACC, mu = 1 / 6)</code></pre>
+<pre><code>## Warning in wilcox.test.default(pol_item_avg$ACC, mu = 1/6): cannot compute
 ## exact p-value with ties</code></pre>
-<pre><code>## Warning in wilcox.test.default(pol_item_avg$ACC, mu = 0.6): cannot compute
-## exact p-value with zeroes</code></pre>
 <pre><code>## 
 ##  Wilcoxon signed rank test with continuity correction
 ## 
 ## data:  pol_item_avg$ACC
-## V = 202, p-value = 0.7639
-## alternative hypothesis: true location is not equal to 0.6</code></pre>
+## V = 462, p-value = 2.466e-06
+## alternative hypothesis: true location is not equal to 0.1666667</code></pre>
 <p>Same result, Germans significant, Polish not. This result has to be taken with a grain of salt however as there’s still two weird items in there I believe.</p>
 <div id="do-list" class="section level2">
 <h2>2do list:</h2>
