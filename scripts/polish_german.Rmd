@@ -269,12 +269,12 @@ round(mean(pol$ACC), 2)
 Let's check accuracy per concept:
 
 ```{r acc_per_concept}
-ger %>% group_by(choice) %>%
+ger_item_avg <- ger %>% group_by(choice) %>%
   summarize(ACC = mean(ACC)) %>%
   mutate(ACC = round(ACC, 2)) %>% 
   arrange(desc(ACC)) %>% 
   print(n = Inf)
-pol %>% group_by(choice) %>%
+pol_item_avg <- pol %>% group_by(choice) %>%
   summarize(ACC = mean(ACC)) %>%
   mutate(ACC = round(ACC, 2)) %>% 
   arrange(desc(ACC)) %>% 
@@ -384,6 +384,15 @@ wilcox.test(pol_subs$ACC, mu = 0.6)
 ```
 
 Based on this, the Germans perform significantly better than chance, but the Polish do not.
+
+Let's do the same for items:
+
+```{r ACC_items_wilcox}
+wilcox.test(ger_item_avg$ACC, mu = 0.6)
+wilcox.test(pol_item_avg$ACC, mu = 0.6)
+```
+
+Same result, Germans significant, Polish not. This result has to be taken with a grain of salt however as there's still two weird items in there I believe.
 
 ## 2do list:
 

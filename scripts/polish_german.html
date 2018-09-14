@@ -505,7 +505,7 @@ pol &lt;- mutate(pol,
 <pre><code>## [1] 0.6</code></pre>
 <p>71% for Germans, 60% for Poles. So the with 1 out 6 options, the Poles are performing exactly at chance.</p>
 <p>Let’s check accuracy per concept:</p>
-<pre class="r"><code>ger %&gt;% group_by(choice) %&gt;%
+<pre class="r"><code>ger_item_avg &lt;- ger %&gt;% group_by(choice) %&gt;%
   summarize(ACC = mean(ACC)) %&gt;%
   mutate(ACC = round(ACC, 2)) %&gt;% 
   arrange(desc(ACC)) %&gt;% 
@@ -543,7 +543,7 @@ pol &lt;- mutate(pol,
 ## 28 scharf     0.54 
 ## 29 das        0.28 
 ## 30 &quot;&quot;         0</code></pre>
-<pre class="r"><code>pol %&gt;% group_by(choice) %&gt;%
+<pre class="r"><code>pol_item_avg &lt;- pol %&gt;% group_by(choice) %&gt;%
   summarize(ACC = mean(ACC)) %&gt;%
   mutate(ACC = round(ACC, 2)) %&gt;% 
   arrange(desc(ACC)) %&gt;% 
@@ -836,6 +836,28 @@ summary(ger.lme4)</code></pre>
 ## V = 229, p-value = 0.5181
 ## alternative hypothesis: true location is not equal to 0.6</code></pre>
 <p>Based on this, the Germans perform significantly better than chance, but the Polish do not.</p>
+<p>Let’s do the same for items:</p>
+<pre class="r"><code>wilcox.test(ger_item_avg$ACC, mu = 0.6)</code></pre>
+<pre><code>## Warning in wilcox.test.default(ger_item_avg$ACC, mu = 0.6): cannot compute
+## exact p-value with ties</code></pre>
+<pre><code>## 
+##  Wilcoxon signed rank test with continuity correction
+## 
+## data:  ger_item_avg$ACC
+## V = 386, p-value = 0.001647
+## alternative hypothesis: true location is not equal to 0.6</code></pre>
+<pre class="r"><code>wilcox.test(pol_item_avg$ACC, mu = 0.6)</code></pre>
+<pre><code>## Warning in wilcox.test.default(pol_item_avg$ACC, mu = 0.6): cannot compute
+## exact p-value with ties</code></pre>
+<pre><code>## Warning in wilcox.test.default(pol_item_avg$ACC, mu = 0.6): cannot compute
+## exact p-value with zeroes</code></pre>
+<pre><code>## 
+##  Wilcoxon signed rank test with continuity correction
+## 
+## data:  pol_item_avg$ACC
+## V = 202, p-value = 0.7639
+## alternative hypothesis: true location is not equal to 0.6</code></pre>
+<p>Same result, Germans significant, Polish not. This result has to be taken with a grain of salt however as there’s still two weird items in there I believe.</p>
 <div id="do-list" class="section level2">
 <h2>2do list:</h2>
 <ul>
