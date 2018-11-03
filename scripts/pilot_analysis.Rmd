@@ -209,6 +209,39 @@ df %>% group_by(Team) %>%
   print(n = Inf)
 ```
 
+Include concept codes. First load them:
+
+```{r per_concept, message = FALSE}
+concepts <- read_csv('../data/concept_codes.csv')
+concepts
+```
+
+Then merge concept info into main data frame:
+
+```{r merge_concepts}
+df <- left_join(df, concepts,
+                by = c('Item' = 'meaning'))
+```
+
+Check accuracy across per category:
+
+```{r concept_ACC}
+df %>% group_by(category) %>%
+  summarize(ACC = mean(ACC)) %>% 
+  mutate(Percentage = str_c(round(ACC, 2) * 100, '%')) %>%
+  arrange(desc(ACC))
+```
+
+Check accuracy across per subcategory:
+
+```{r subconcept_ACC}
+df %>% group_by(subCategory) %>%
+  summarize(ACC = mean(ACC)) %>% 
+  mutate(Percentage = str_c(round(ACC, 2) * 100, '%')) %>%
+  arrange(desc(ACC))
+```
+
+
 ## Inferential stats
 
 

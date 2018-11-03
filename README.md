@@ -8,6 +8,7 @@ Data files contained in this repo:
 * 2018-08-21-polish.txt : raw data from online script, Polish
 * experimentInputs_2018-10-24.txt : compiled raw data from online script, Polish, German, English, & Japanese
 * header.txt : column names for experimentInputs_2018-10-24.txt
+* concept_codes.csv : codes items for conceptual categories (properties, actions etc.)
 
 Script files contained in this repo:
 
