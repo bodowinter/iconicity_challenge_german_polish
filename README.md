@@ -1,6 +1,6 @@
-# Vocal Iconicity Challenge: German & Polish
+# The cross-linguistic vocal iconicity challenge: Analysis
 
-A first analysis for the cross-linguistic version of the vocal iconicity challenge. This excludes r/l and kiki/bouba for now. I only look at average accuracy for the time being.
+A first analysis for the cross-linguistic version of the vocal iconicity challenge.
 
 Data files contained in this repo:
 
