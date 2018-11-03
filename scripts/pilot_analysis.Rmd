@@ -1,0 +1,218 @@
+---
+title: "Analysis of Crosslinguistic Vocal Iconicity Challenge"
+author: "Bodo Winter (analysis only)"
+date: "11/3/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This is the analysis of the Polish, German, English, and Japanese data for vocal iconicity challenge, to be presented at the ICLC conference. This is a pilot analysis that will serve as the basis for the other languages to come. After we've settled on an analysis for this data, we will preregister the main analysis for the other languages.
+
+Load libraries:
+
+```{r libs, message = FALSE}
+library(tidyverse) # for data carpentry
+library(stringr) # for string processing
+library(brms) # for bayesian models
+```
+
+Load data (column names are stored separately):
+
+```{r load_data, message = FALSE, warning = FALSE}
+# Load the main data:
+
+df <- read_delim('../data/experimentInputs_2018-10-24.txt',
+                 delim = '\t', col_names = FALSE)
+
+# Load column names and append them:
+
+these_cols <- readLines('../data/header.txt')
+colnames(df) <- these_cols
+
+# Show first few columns:
+
+df %>% print(n = 2, width = Inf)
+```
+
+Check how many data points there are per experiment:
+
+```{r exp_stats}
+table(df$Experiment)
+```
+
+The "Session" column can be used as a unique identifier for subjects. Let's rename this for transparency:
+
+```{r rename_subs}
+df <- rename(df,
+             Subject = Session)
+```
+
+Check how many subjects there are per experiment. 
+
+```{r sub_stats}
+length(unique(df$Subject))
+```
+
+254 subjects!
+
+How many subjects per language?
+
+```{r sub_per_lang}
+# apply(table(df$Subject, df$Experiment),
+      # MARGIN = 2, FUN = function(x) sum(x != 0))
+df %>% count(Experiment) %>% mutate(n = n / 104)
+```
+
+How many women and men, per language, and overall?
+
+```{r gender_stats}
+# Overall raw counts:
+
+table(df$Sex) / 104
+
+# Overall percentage:
+
+prop.table(table(df$Sex) / 104)
+
+# Per language, raw counts:
+
+df %>% count(Experiment, Sex) %>% mutate(n = n / 104)
+```
+
+## Compute accuracy, check claps & clean data:
+
+The input and expected columns need to be matched for determining accuracy:
+
+```{r compute_accuracy}
+df <- mutate(df, ACC = ifelse(Input == Expected, 1, 0))
+head(df$ACC)
+```
+
+Check accuracy of the clapping sound:
+
+```{r clap_accuracy}
+str_c(round(mean(filter(df, Audio == 'clapping.wav')$ACC), 2) * 100, '%')
+```
+
+97% correct across the board.
+
+Check accuracy of the clapping sound across the four languages:
+
+```{r clap_accuracy_avgs}
+df %>% filter(Audio == 'clapping.wav') %>% 
+  group_by(Experiment) %>% 
+  summarize(ACC = mean(ACC))
+```
+
+Japanese the worst (96%), closely followed by German (97%) ... these differences are quite negligible. Participants seem to have performed equally well across the four language groups in terms of detecting the clapping.
+
+Check accuracy of the clapping sound per participant:
+
+```{r clap_accuracy_per_sub}
+# Aggregate clapping accuracy per subject:
+
+subs_clap_accuracy <- df %>%
+  filter(Audio == 'clapping.wav') %>% 
+  group_by(Subject) %>% 
+  summarize(ACC = mean(ACC))
+
+# Summarize clapping accuracy per subject:
+
+subs_clap_accuracy %>% count(ACC)
+```
+
+Almost all subjects performed well with respect to the clapping sound. 228 scored perfectly, which is...
+
+```{r percentage_claps}
+str_c(round(228 / (nrow(df) / 104), 2) * 100, '%')
+```
+
+90% of them scored perfectly. There's also a bunch of people who have 90% of all claps correctly. Let's exclude those that performed less than 80% correctly. First, find the subjects:
+
+```{r get_bad_subs}
+bad_subs <- filter(subs_clap_accuracy, ACC < 0.8) %>%
+  pull(Subject)
+
+# Check:
+
+bad_subs
+length(bad_subs)
+```
+
+So, there'll be a total of 10 subjects excluded for performing badly on the clapping sound. Exclude them:
+
+```{r exclude_bad_subs}
+df <- filter(df, !(Subject %in% bad_subs))
+
+# Check new number of participants:
+
+nrow(df) / 104
+```
+
+Now we can get rid of the clapping sounds (which shouldn't be included in the overall accuracies):
+
+```{r exclude_claps}
+df <- filter(df, Audio != 'clapping.wav')
+```
+
+Next, let's get rid of the kiki/bouba/r/l/ stims:
+
+```{r exclude_kiki_rl}
+not_these <- c('kiki.wav', 'bouba.wav', 'l.wav', 'r.wav')
+df <- filter(df, !(Audio %in% not_these))
+```
+
+How many unique data points do we have now? (these are actually the experimental items)
+
+```{r unique_data_sum}
+nrow(df)
+```
+
+Now that we have only the relevant trials, we can separate the team and item info, which is contained in the audio file:
+
+```{r clean_items}
+df <- separate(df, Audio,
+               into = c('Team', 'Item', 'Extension')) %>%
+  select(-Extension)
+```
+
+## Descriptive averages
+
+Check descriptive averages per languages:
+
+```{r per_lang_ACC}
+df %>% group_by(Experiment) %>% 
+  summarize(ACC = mean(ACC)) %>%
+  mutate(Percentage = str_c(round(ACC, 2) * 100, '%'))
+```
+
+Check descriptive averages per items, sorted from best to worst:
+
+```{r per_item_ACC}
+df %>% group_by(Item) %>% 
+  summarize(ACC = mean(ACC)) %>%
+  mutate(Percentage = str_c(round(ACC, 2) * 100, '%')) %>% arrange(desc(ACC)) %>%
+  print(n = Inf)
+```
+
+Check descriptive averages per team, sorted from best to worst:
+
+```{r per_team_ACC}
+df %>% group_by(Team) %>% 
+  summarize(ACC = mean(ACC)) %>%
+  mutate(Percentage = str_c(round(ACC, 2) * 100, '%')) %>% arrange(desc(ACC)) %>%
+  print(n = Inf)
+```
+
+## Inferential stats
+
+
+
+
+
+

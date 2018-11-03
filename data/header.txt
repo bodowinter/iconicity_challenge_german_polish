@@ -1,0 +1,17 @@
+Experiment
+Session
+Startdate
+Age
+Sex
+School
+Firstlangugage
+Dialect
+Residence
+Otherlanguage
+Audio
+Repetitions
+Input
+Expected
+Startplay
+Stopplay
+Inputtime
