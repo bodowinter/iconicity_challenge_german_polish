@@ -18,7 +18,10 @@ Load libraries:
 ```{r libs, message = FALSE}
 library(tidyverse) # for data carpentry
 library(stringr) # for string processing
-library(brms) # for bayesian models
+library(lme4) # for mixed models
+library(afex) # for likelihood ratio test, fixed effects
+library(RLRsim) # for likelihood ratio tests, random effects, not used yet
+library(brms) # for bayesian models, not used yet
 ```
 
 Load data (column names are stored separately):
@@ -241,8 +244,103 @@ df %>% group_by(subCategory) %>%
   arrange(desc(ACC))
 ```
 
+## Inferential stats (preliminary)
 
-## Inferential stats
+This is testing intercepts against a log odd of 0 (= 50% chance), which is an even more conservative criterion since chance was actually at 16%.
+
+This is an intercept-only model with four random intercepts, one for subjects, experiments (=languages in this case), items, and team.
+
+```{r ACC_lme4, cache = TRUE}
+xmdl <- glmer(ACC ~ 1 +
+                (1|Subject) + (1|Experiment) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial)
+summary(xmdl)
+```
+
+Things to note in this model: The intercept is significant (Wald's Z test), which means overall performance is above 50%. By quite a bit.
+
+In fact, the odds of observing a correct response as opposed to an incorrect response are:
+
+```{r odds}
+exp(fixef(xmdl))
+```
+
+They are 2.5 to 1. In terms of percentages, the model estimates:
+
+```{r percentages}
+plogis(fixef(xmdl))
+```
+
+... on average 72% correct.
+
+Another thing to note about the model is the random effect variation:
+
+```{r model_RE}
+summary(xmdl)$varcor
+```
+
+There is more random effect variation due to items than due to subjects, teams or languages! In fact, there is more variation due to subjects than there is due to languages!! This suggests quite stunning cross-linguistic uniformity.
+
+Finally, let's perform a likelihood ratio test of concept categories. I'm omitting all random slopes for now, which is not optimal. In a Bayesian model we'll be able to fit all the necessary random slopes more easily.
+
+```{r LRT_category, cache = TRUE}
+xmdl_concept <- mixed(ACC ~ category +
+                (1|Subject) + (1|Experiment) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial,
+              method = 'LRT')
+xmdl_concept
+```
+
+That's quite borderline significant! I wouldn't bet on the category effect in this model yet — especially since there are no random slopes for category added to the model. But with more power in the final analysis, this will be worth testing.
+
+```{r LRT_sub_category, cache = TRUE}
+xmdl_sub_concept <- mixed(ACC ~ subCategory +
+                (1|Subject) + (1|Experiment) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial,
+              method = 'LRT')
+xmdl_sub_concept
+```
+
+## Test of random effects
+
+We can perform likelihood ratio tests (with restricted maximum likelihood) for the random effects.
+
+```{r fit_models, cache = TRUE}
+xmdl_nosub <- glmer(ACC ~ 1 + (1|Experiment) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial)
+xmdl_nolang <- glmer(ACC ~ 1 + (1|Subject) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial)
+xmdl_noitem <- glmer(ACC ~ 1 + (1|Subject) +
+                (1|Experiment) + (1|Team),
+              data = df, family = binomial)
+xmdl_noteam <- glmer(ACC ~ 1 + (1|Subject) +
+                (1|Experiment) + (1|Item),
+              data = df, family = binomial)
+```
+
+Perform likelihood ratio test of random effects. This is likely anti-conservative given that the models have been fitted with maximum likelihood...
+
+```{r RE_LRTs}
+
+# Test of subject random effect:
+anova(xmdl_nosub, xmdl)
+
+# Test of language random effect:
+anova(xmdl_nolang, xmdl)
+
+# Test of item random effect:
+anova(xmdl_noitem, xmdl)
+
+# Test of team random effect:
+anova(xmdl_noteam, xmdl)
+```
+
+All random effects are indicated to be significant.
 
 
 

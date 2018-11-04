@@ -131,7 +131,10 @@ $(document).ready(function () {
 <p>Load libraries:</p>
 <pre class="r"><code>library(tidyverse) # for data carpentry
 library(stringr) # for string processing
-library(brms) # for bayesian models</code></pre>
+library(lme4) # for mixed models
+library(afex) # for likelihood ratio test, fixed effects
+library(RLRsim) # for likelihood ratio tests, random effects, not used yet
+library(brms) # for bayesian models, not used yet</code></pre>
 <p>Load data (column names are stored separately):</p>
 <pre class="r"><code># Load the main data:
 
@@ -411,8 +414,165 @@ concepts</code></pre>
 ## 6 quantity      0.567 57%       
 ## 7 demonstrative 0.499 50%</code></pre>
 </div>
-<div id="inferential-stats" class="section level2">
-<h2>Inferential stats</h2>
+<div id="inferential-stats-preliminary" class="section level2">
+<h2>Inferential stats (preliminary)</h2>
+<p>This is testing intercepts against a log odd of 0 (= 50% chance), which is an even more conservative criterion since chance was actually at 16%.</p>
+<p>This is an intercept-only model with four random intercepts, one for subjects, experiments (=languages in this case), items, and team.</p>
+<pre class="r"><code>xmdl &lt;- glmer(ACC ~ 1 +
+                (1|Subject) + (1|Experiment) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial)
+summary(xmdl)</code></pre>
+<pre><code>## Generalized linear mixed model fit by maximum likelihood (Laplace
+##   Approximation) [glmerMod]
+##  Family: binomial  ( logit )
+## Formula: ACC ~ 1 + (1 | Subject) + (1 | Experiment) + (1 | Item) + (1 |  
+##     Team)
+##    Data: df
+## 
+##      AIC      BIC   logLik deviance df.resid 
+##  73114.5  73160.0 -36552.2  73104.5    65875 
+## 
+## Scaled residuals: 
+##     Min      1Q  Median      3Q     Max 
+## -8.1325 -0.9058  0.4090  0.6958  2.6727 
+## 
+## Random effects:
+##  Groups     Name        Variance Std.Dev.
+##  Subject    (Intercept) 0.15746  0.3968  
+##  Item       (Intercept) 0.98488  0.9924  
+##  Team       (Intercept) 0.41555  0.6446  
+##  Experiment (Intercept) 0.09789  0.3129  
+## Number of obs: 65880, groups:  
+## Subject, 244; Item, 30; Team, 11; Experiment, 4
+## 
+## Fixed effects:
+##             Estimate Std. Error z value Pr(&gt;|z|)   
+## (Intercept)   0.9319     0.3097   3.009  0.00262 **
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</code></pre>
+<p>Things to note in this model: The intercept is significant (Wald’s Z test), which means overall performance is above 50%. By quite a bit.</p>
+<p>In fact, the odds of observing a correct response as opposed to an incorrect response are:</p>
+<pre class="r"><code>exp(fixef(xmdl))</code></pre>
+<pre><code>## (Intercept) 
+##    2.539309</code></pre>
+<p>They are 2.5 to 1. In terms of percentages, the model estimates:</p>
+<pre class="r"><code>plogis(fixef(xmdl))</code></pre>
+<pre><code>## (Intercept) 
+##   0.7174589</code></pre>
+<p>… on average 72% correct.</p>
+<p>Another thing to note about the model is the random effect variation:</p>
+<pre class="r"><code>summary(xmdl)$varcor</code></pre>
+<pre><code>##  Groups     Name        Std.Dev.
+##  Subject    (Intercept) 0.39682 
+##  Item       (Intercept) 0.99241 
+##  Team       (Intercept) 0.64464 
+##  Experiment (Intercept) 0.31287</code></pre>
+<p>There is more random effect variation due to items than due to subjects, teams or languages! In fact, there is more variation due to subjects than there is due to languages!! This suggests quite stunning cross-linguistic uniformity.</p>
+<p>Finally, let’s perform a likelihood ratio test of concept categories. I’m omitting all random slopes for now, which is not optimal. In a Bayesian model we’ll be able to fit all the necessary random slopes more easily.</p>
+<pre class="r"><code>xmdl_concept &lt;- mixed(ACC ~ category +
+                (1|Subject) + (1|Experiment) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial,
+              method = 'LRT')</code></pre>
+<pre><code>## Fitting 2 (g)lmer() models:
+## [..]</code></pre>
+<pre class="r"><code>xmdl_concept</code></pre>
+<pre><code>## Mixed Model Anova Table (Type 3 tests, LRT-method)
+## 
+## Model: ACC ~ category + (1 | Subject) + (1 | Experiment) + (1 | Item) + 
+## Model:     (1 | Team)
+## Data: df
+## Df full model: 7
+##     Effect df  Chisq p.value
+## 1 category  2 5.89 +     .05
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '+' 0.1 ' ' 1</code></pre>
+<p>That’s quite borderline significant! I wouldn’t bet on the category effect in this model yet — especially since there are no random slopes for category added to the model. But with more power in the final analysis, this will be worth testing.</p>
+<pre class="r"><code>xmdl_sub_concept &lt;- mixed(ACC ~ subCategory +
+                (1|Subject) + (1|Experiment) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial,
+              method = 'LRT')</code></pre>
+<pre><code>## Fitting 2 (g)lmer() models:
+## [..]</code></pre>
+<pre class="r"><code>xmdl_sub_concept</code></pre>
+<pre><code>## Mixed Model Anova Table (Type 3 tests, LRT-method)
+## 
+## Model: ACC ~ subCategory + (1 | Subject) + (1 | Experiment) + (1 | Item) + 
+## Model:     (1 | Team)
+## Data: df
+## Df full model: 11
+##        Effect df Chisq p.value
+## 1 subCategory  6  8.15     .23
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '+' 0.1 ' ' 1</code></pre>
+</div>
+<div id="test-of-random-effects" class="section level2">
+<h2>Test of random effects</h2>
+<p>We can perform likelihood ratio tests (with restricted maximum likelihood) for the random effects.</p>
+<pre class="r"><code>xmdl_nosub &lt;- glmer(ACC ~ 1 + (1|Experiment) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial)
+xmdl_nolang &lt;- glmer(ACC ~ 1 + (1|Subject) +
+                (1|Item) + (1|Team),
+              data = df, family = binomial)
+xmdl_noitem &lt;- glmer(ACC ~ 1 + (1|Subject) +
+                (1|Experiment) + (1|Team),
+              data = df, family = binomial)
+xmdl_noteam &lt;- glmer(ACC ~ 1 + (1|Subject) +
+                (1|Experiment) + (1|Item),
+              data = df, family = binomial)</code></pre>
+<p>Perform likelihood ratio test of random effects. This is likely anti-conservative given that the models have been fitted with maximum likelihood…</p>
+<pre class="r"><code># Test of subject random effect:
+anova(xmdl_nosub, xmdl)</code></pre>
+<pre><code>## Data: df
+## Models:
+## xmdl_nosub: ACC ~ 1 + (1 | Experiment) + (1 | Item) + (1 | Team)
+## xmdl: ACC ~ 1 + (1 | Subject) + (1 | Experiment) + (1 | Item) + (1 | 
+## xmdl:     Team)
+##            Df   AIC   BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)    
+## xmdl_nosub  4 74459 74496 -37226    74451                             
+## xmdl        5 73114 73160 -36552    73104 1346.9      1  &lt; 2.2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</code></pre>
+<pre class="r"><code># Test of language random effect:
+anova(xmdl_nolang, xmdl)</code></pre>
+<pre><code>## Data: df
+## Models:
+## xmdl_nolang: ACC ~ 1 + (1 | Subject) + (1 | Item) + (1 | Team)
+## xmdl: ACC ~ 1 + (1 | Subject) + (1 | Experiment) + (1 | Item) + (1 | 
+## xmdl:     Team)
+##             Df   AIC   BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)    
+## xmdl_nolang  4 73190 73227 -36591    73182                             
+## xmdl         5 73114 73160 -36552    73104 77.859      1  &lt; 2.2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</code></pre>
+<pre class="r"><code># Test of item random effect:
+anova(xmdl_noitem, xmdl)</code></pre>
+<pre><code>## Data: df
+## Models:
+## xmdl_noitem: ACC ~ 1 + (1 | Subject) + (1 | Experiment) + (1 | Team)
+## xmdl: ACC ~ 1 + (1 | Subject) + (1 | Experiment) + (1 | Item) + (1 | 
+## xmdl:     Team)
+##             Df   AIC   BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)    
+## xmdl_noitem  4 80478 80515 -40235    80470                             
+## xmdl         5 73114 73160 -36552    73104 7365.7      1  &lt; 2.2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</code></pre>
+<pre class="r"><code># Test of team random effect:
+anova(xmdl_noteam, xmdl)</code></pre>
+<pre><code>## Data: df
+## Models:
+## xmdl_noteam: ACC ~ 1 + (1 | Subject) + (1 | Experiment) + (1 | Item)
+## xmdl: ACC ~ 1 + (1 | Subject) + (1 | Experiment) + (1 | Item) + (1 | 
+## xmdl:     Team)
+##             Df   AIC   BIC logLik deviance  Chisq Chi Df Pr(&gt;Chisq)    
+## xmdl_noteam  4 73814 73851 -36903    73806                             
+## xmdl         5 73114 73160 -36552    73104 701.94      1  &lt; 2.2e-16 ***
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1</code></pre>
+<p>All random effects are indicated to be significant.</p>
 </div>
 
 
